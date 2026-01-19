@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 无线编程器</title>
+    <meta charset="utf-8">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .content {
+            display: flex;
+            min-height: 600px;
+        }
+        
+        .editor-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .control-section {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 20px;
+            border-left: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .editor-toolbar {
+            background: #34495e;
+            color: white;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .editor-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #codeEditor {
+            width: 100%;
+            height: 100%;
+            border: none;
+            padding: 15px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+        }
+        
+        .status-bar {
+            background: #ecf0f1;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+        
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+            margin: 5px 0;
+            width: 100%;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background: #219653;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+        }
+        
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        
+        .btn-warning {
+            background: #f39c12;
+        }
+        
+        .btn-warning:hover {
+            background: #d68910;
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .connected {
+            background: #d5f4e6;
+            color: #27ae60;
+            border: 1px solid #2ecc71;
+        }
+        
+        .disconnected {
+            background: #ffeaea;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+        
+        .log-container {
+            flex: 1;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #3498db;
+            background: #f8f9fa;
+        }
+        
+        .log-error {
+            border-left-color: #e74c3c;
+            background: #ffeaea;
+        }
+        
+        .log-success {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            width: 0%;
+            transition: width 0.3s;
+            text-align: center;
+            color: white;
+            line-height: 20px;
+            font-size: 12px;
+        }
+        
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        
+        .file-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-item:hover {
+            background: #f0f7ff;
+        }
+        
+        .file-name {
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+        
+        .file-size {
+            color: #7f8c8d;
+            font-size: 11px;
+        }
+        
+        .delete-file {
+            color: #e74c3c;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        
+        .delete-file:hover {
+            background: #ffeaea;
+        }
+        
+        .examples {
+            margin-top: 15px;
+        }
+        
+        .example-btn {
+            background: #9b59b6;
+            margin: 2px;
+            width: calc(50% - 4px);
+            display: inline-block;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
+        .example-btn:hover {
+            background: #8e44ad;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 400px;
+        }
+        
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .tab-container {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            background: #f8f9fa;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-right: 1px solid #ddd;
+        }
+        
+        .tab.active {
+            background: white;
+            border-bottom: 2px solid #3498db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📡 ESP32 无线编程器</h1>
+            <p>通过蓝牙给ESP32发送并执行Python代码</p>
+        </div>
+        
+        <div class="content">
+            <div class="editor-section">
+                <div class="tab-container">
+                    <div class="tab active" onclick="switchTab('editor')">代码编辑器</div>
+                    <div class="tab" onclick="switchTab('terminal')">终端输出</div>
+                </div>
+                
+                <div id="editorTab" class="editor-container">
+                    <textarea id="codeEditor" style="width: 100%; height: 100%; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 14px; padding: 15px; border: none; resize: none; outline: none;"># ESP32 MicroPython 代码编辑器
+# 通过蓝牙无线编程
+
+from machine import Pin
+import time
+
+led = Pin(2, Pin.OUT)
+
+while True:
+    led.value(not led.value())
+    time.sleep(0.5)</textarea>
+                </div>
+                
+                <div id="terminalTab" class="editor-container" style="display: none;">
+                    <div class="log-container" id="terminalOutput"></div>
+                </div>
+                
+                <div class="status-bar">
+                    <span id="statusText">未连接</span>
+                    <span style="float: right;">
+                        行: <span id="lineNumber">1</span>, 
+                        列: <span id="columnNumber">1</span>
+                    </span>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="connection-status disconnected" id="connectionStatus">
+                    🔴 未连接到 ESP32
+                </div>
+                
+                <div class="progress-bar" id="progressBar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+                
+                <div class="control-group">
+                    <h3>📡 连接控制</h3>
+                    <button id="connectBtn" onclick="connectDevice()">扫描并连接设备</button>
+                    <button id="disconnectBtn" onclick="disconnectDevice()" disabled>断开连接</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>💾 文件操作</h3>
+                    <button onclick="saveCode()" id="saveBtn" disabled>保存代码到ESP32</button>
+                    <button onclick="listFiles()" id="listBtn" disabled>列出文件</button>
+                    <button onclick="runCode()" id="runBtn" disabled>▶ 执行代码</button>
+                    <button onclick="uploadFile()" id="uploadBtn" disabled>📤 上传文件</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>📁 文件列表</h3>
+                    <div class="file-list" id="fileList">
+                        <div style="padding: 10px; color: #7f8c8d; text-align: center;">
+                            点击"列出文件"查看
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <h3>⚙️ 系统命令</h3>
+                    <button onclick="getSystemInfo()" id="infoBtn" disabled>系统信息</button>
+                    <button onclick="restartESP32()" id="restartBtn" disabled class="btn-warning">重启ESP32</button>
+                    <button onclick="clearEditor()" class="btn-danger">清空编辑器</button>
+                </div>
+                
+                <div class="examples">
+                    <h3>🎯 示例代码</h3>
+                    <button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>
+                    <button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>
+                    <button class="example-btn" onclick="loadExample('wifi')">WiFi连接</button>
+                    <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>📊 输出日志</h3>
+                    <div class="log-container" id="outputLog"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 文件名输入模态框 -->
+    <div class="modal" id="fileNameModal">
+        <div class="modal-content">
+            <h3>保存文件</h3>
+            <p>输入文件名（例如：main.py, script.py）</p>
+            <input type="text" id="fileNameInput" placeholder="main.py" value="main.py">
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="confirmSave()" style="flex: 1;" class="btn-success">保存</button>
+                <button onclick="cancelSave()" style="flex: 1;" class="btn-danger">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // BLE配置
+        const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        const TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+        const CODE_CHARACTERISTIC_UUID = '6e400004-b5a3-f393-e0a9-e50e24dCCA9e';
+        
+        // 全局变量
+        let device = null;
+        let server = null;
+        let service = null;
+        let rxCharacteristic = null;  // 发送命令
+        let txCharacteristic = null;  // 接收响应
+        let codeCharacteristic = null; // 大文件传输
+        let isConnected = false;
+
+        // 编辑器引用
+        const editor = document.getElementById('codeEditor');
+
+        // 监听光标位置变化
+        editor.addEventListener('click', updateCursorPosition);
+        editor.addEventListener('keyup', updateCursorPosition);
+
+        function updateCursorPosition() {
+            const text = editor.value.substring(0, editor.selectionStart);
+            const lines = text.split('\n');
+            document.getElementById('lineNumber').textContent = lines.length;
+            document.getElementById('columnNumber').textContent = lines[lines.length - 1].length + 1;
+        }
+        
+        // 标签切换
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('editorTab').style.display = 'none';
+            document.getElementById('terminalTab').style.display = 'none';
+            
+            if (tabName === 'editor') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('editorTab').style.display = 'block';
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('terminalTab').style.display = 'block';
+            }
+        }
+        
+        // 连接设备
+        async function connectDevice() {
+            try {
+                logMessage('正在扫描ESP32设备...', 'info');
+                
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32-CodeLoader' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                
+                logMessage(`找到设备: ${device.name || device.id}`, 'success');
+                
+                // 连接GATT服务器
+                logMessage('正在连接...', 'info');
+                server = await device.gatt.connect();
+                
+                // 获取服务
+                service = await server.getPrimaryService(SERVICE_UUID);
+                
+                // 获取特征
+                rxCharacteristic = await service.getCharacteristic(RX_CHARACTERISTIC_UUID);
+                txCharacteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
+                codeCharacteristic = await service.getCharacteristic(CODE_CHARACTERISTIC_UUID);
+                
+                // 监听通知
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', handleResponse);
+                
+                // 更新连接状态
+                isConnected = true;
+                updateConnectionStatus(true);
+                
+                logMessage('连接成功！', 'success');
+                
+                // 启用控制按钮
+                enableControls(true);
+                
+                // 监听断开事件
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+                
+            } catch (error) {
+                logMessage(`连接失败: ${error.message}`, 'error');
+                updateConnectionStatus(false);
+            }
+        }
+        
+        // 断开连接
+        async function disconnectDevice() {
+            if (device && device.gatt.connected) {
+                try {
+                    await device.gatt.disconnect();
+                    logMessage('已断开连接', 'info');
+                } catch (error) {
+                    logMessage(`断开连接失败: ${error.message}`, 'error');
+                }
+            }
+            onDisconnected();
+        }
+        
+        // 断开处理
+        function onDisconnected() {
+            isConnected = false;
+            device = null;
+            server = null;
+            service = null;
+            rxCharacteristic = null;
+            txCharacteristic = null;
+            codeCharacteristic = null;
+            
+            updateConnectionStatus(false);
+            enableControls(false);
+            logMessage('设备已断开', 'error');
+        }
+        
+        // 发送命令到ESP32
+        async function sendCommand(command) {
+            if (!isConnected || !rxCharacteristic) {
+                logMessage('错误：未连接到设备', 'error');
+                return null;
+            }
+            
+            try {
+                const commandStr = JSON.stringify(command);
+                const encoder = new TextEncoder();
+                const data = encoder.encode(commandStr);
+                
+                await rxCharacteristic.writeValue(data);
+                logMessage(`发送命令: ${command.type}`, 'info');
+                
+            } catch (error) {
+                logMessage(`发送失败: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        // 发送大文件数据
+        async function sendFileData(data) {
+            if (!isConnected || !codeCharacteristic) {
+                throw new Error('未连接到设备');
+            }
+            
+            const encoder = new TextEncoder();
+            const buffer = encoder.encode(data);
+            
+            // 分块发送（避免MTU限制）
+            const chunkSize = 512; // BLE MTU通常为512字节
+            for (let i = 0; i < buffer.length; i += chunkSize) {
+                const chunk = buffer.slice(i, i + chunkSize);
+                await codeCharacteristic.writeValue(chunk);
+                
+                // 更新进度
+                const progress = Math.min((i + chunk.length) / buffer.length * 100, 100);
+                updateProgress(progress);
+                
+                // 稍微延迟，避免阻塞
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        }
+        
+        // 处理ESP32响应
+        function handleResponse(event) {
+            const value = event.target.value;
+            const decoder = new TextDecoder('utf-8');
+            const dataStr = decoder.decode(value);
+            
+            try {
+                const response = JSON.parse(dataStr.trim());
+                processResponse(response);
+            } catch (error) {
+                logMessage(`接收数据: ${dataStr}`, 'info');
+            }
+        }
+        
+        // 处理响应
+        function processResponse(response) {
+            const status = response.status;
+            const message = response.message;
+            const data = response.data;
+            
+            switch (status) {
+                case 'CONNECTED':
+                    logMessage(message, 'success');
+                    break;
+                    
+                case 'SUCCESS':
+                    logMessage(`✓ ${message}`, 'success');
+                    if (data && data.files) {
+                        displayFileList(data.files);
+                    }
+                    if (data && data.result) {
+                        displayExecutionResult(data.result);
+                    }
+                    break;
+                    
+                case 'ERROR':
+                    logMessage(`✗ ${message}`, 'error');
+                    break;
+                    
+                case 'INFO':
+                    logMessage(`ℹ ${message}`, 'info');
+                    break;
+                    
+                case 'READY':
+                    logMessage(`准备接收文件: ${data.filename}`, 'info');
+                    startFileUpload(data.filename);
+                    break;
+                    
+                case 'PROGRESS':
+                    updateProgress(data.progress);
+                    break;
+                    
+                default:
+                    logMessage(`未知响应: ${status} - ${message}`, 'info');
+            }
+        }
+        
+        // 保存代码
+        async function saveCode() {
+            const code = editor.value;
+            if (!code.trim()) {
+                alert('请输入代码');
+                return;
+            }
+            
+            // 显示文件名输入框
+            document.getElementById('fileNameModal').style.display = 'flex';
+            window.confirmSaveCallback = async () => {
+                const filename = document.getElementById('fileNameInput').value.trim();
+                if (!filename) {
+                    alert('请输入文件名');
+                    return;
+                }
+                
+                if (!filename.endsWith('.py')) {
+                    alert('文件名应以 .py 结尾');
+                    return;
+                }
+                
+                await sendCommand({
+                    type: 'save',
+                    code: code,
+                    filename: filename
+                });
+                
+                document.getElementById('fileNameModal').style.display = 'none';
+            };
+        }
+        
+        // 确认保存
+        function confirmSave() {
+            if (window.confirmSaveCallback) {
+                window.confirmSaveCallback();
+            }
+        }
+        
+        // 取消保存
+        function cancelSave() {
+            document.getElementById('fileNameModal').style.display = 'none';
+            window.confirmSaveCallback = null;
+        }
+        
+        // 运行代码
+        async function runCode() {
+            const code = editor.value;
+            if (!code.trim()) {
+                alert('请输入代码');
+                return;
+            }
+            
+            await sendCommand({
+                type: 'run',
+                code: code
+            });
+        }
+        
+        // 上传文件（大文件）
+        async function uploadFile() {
+            const code = editor.value;
+            if (!code.trim()) {
+                alert('请输入代码');
+                return;
+            }
+            
+            const filename = prompt('输入文件名:', 'main.py');
+            if (!filename) return;
+            
+            // 发送开始上传命令
+            await sendCommand({
+                type: 'start_upload',
+                filename: filename,
+                size: code.length
+            });
+        }
+        
+        // 开始文件上传
+        async function startFileUpload(filename) {
+            const code = editor.value;
+            
+            try {
+                showProgressBar(true);
+                await sendFileData(code);
+                showProgressBar(false);
+                
+                logMessage(`文件上传完成: ${filename}`, 'success');
+                
+            } catch (error) {
+                logMessage(`上传失败: ${error.message}`, 'error');
+                showProgressBar(false);
+            }
+        }
+        
+        // 列出文件
+        async function listFiles() {
+            await sendCommand({ type: 'list' });
+        }
+        
+        // 删除文件
+        async function deleteFile(filename) {
+            if (confirm(`确定删除 ${filename} 吗？`)) {
+                await sendCommand({
+                    type: 'delete',
+                    filename: filename
+                });
+                // 刷新文件列表
+                setTimeout(listFiles, 1000);
+            }
+        }
+        
+        // 获取系统信息
+        async function getSystemInfo() {
+            await sendCommand({ type: 'info' });
+        }
+        
+        // 重启ESP32
+        async function restartESP32() {
+            if (confirm('确定要重启ESP32吗？')) {
+                await sendCommand({ type: 'reboot' });
+            }
+        }
+        
+        // 清空编辑器
+        function clearEditor() {
+            if (confirm('确定要清空编辑器吗？')) {
+                editor.value = '# 清空编辑器\n\n# 开始编写你的MicroPython代码...';
+            }
+        }
+        
+        // 加载示例代码
+        function loadExample(exampleName) {
+            const examples = {
+                blink: `# LED闪烁示例
+from machine import Pin
+import time
+
+led = Pin(2, Pin.OUT)
+
+print("开始LED闪烁...")
+
+while True:
+    led.value(not led.value())
+    print(f"LED状态: {led.value()}")
+    time.sleep(0.5)`,
+
+                sensor: `# 传感器读取示例
+from machine import Pin, ADC
+import time
+
+# 假设传感器接在GPIO34
+sensor_pin = Pin(34, Pin.IN)
+adc = ADC(sensor_pin)
+adc.atten(ADC.ATTN_11DB)  # 设置量程
+
+print("开始读取传感器...")
+
+while True:
+    value = adc.read()
+    voltage = value / 4095 * 3.3  # ESP32 ADC是12位
+    print(f"ADC值: {value}, 电压: {voltage:.2f}V")
+    time.sleep(1)`,
+
+                wifi: `# WiFi连接示例
+import network
+import time
+
+wifi_ssid = "你的WiFi名称"
+wifi_password = "你的WiFi密码"
+
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+print(f"正在连接WiFi: {wifi_ssid}")
+wlan.connect(wifi_ssid, wifi_password)
+
+# 等待连接
+max_wait = 10
+while max_wait > 0:
+    if wlan.isconnected():
+        break
+    max_wait -= 1
+    print('等待连接...')
+    time.sleep(1)
+
+if wlan.isconnected():
+    print('连接成功！')
+    print('IP地址:', wlan.ifconfig()[0])
+else:
+    print('连接失败')`,
+
+                http: `# 简单HTTP服务器示例
+import socket
+from machine import Pin
+
+led = Pin(2, Pin.OUT)
+
+def handle_request(client):
+    request = client.recv(1024).decode()
+    
+    # 简单的路由
+    if 'GET /led/on' in request:
+        led.value(1)
+        response = 'LED已打开'
+    elif 'GET /led/off' in request:
+        led.value(0)
+        response = 'LED已关闭'
+    else:
+        response = '''
+        <html>
+        <body>
+            <h1>ESP32 Web Server</h1>
+            <a href="/led/on">打开LED</a><br>
+            <a href="/led/off">关闭LED</a>
+        </body>
+        </html>'''
+    
+    # 发送HTTP响应
+    client.send('HTTP/1.1 200 OK\\r\\n')
+    client.send('Content-Type: text/html\\r\\n')
+    client.send('Connection: close\\r\\n\\r\\n')
+    client.send(response)
+    client.close()
+
+# 创建服务器
+addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+s = socket.socket()
+s.bind(addr)
+s.listen(1)
+
+print('HTTP服务器已启动，访问 http://<esp32-ip>/')
+
+while True:
+    client, addr = s.accept()
+    print('客户端连接:', addr)
+    handle_request(client)`
+            };
+            
+            if (examples[exampleName]) {
+                editor.value = examples[exampleName];
+                logMessage(`已加载 ${exampleName} 示例`, 'success');
+            }
+        }
+        
+        // UI更新函数
+        function updateConnectionStatus(connected) {
+            const statusDiv = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            
+            if (connected) {
+                statusDiv.className = 'connection-status connected';
+                statusDiv.innerHTML = '✅ 已连接到 ESP32';
+                statusText.textContent = '已连接';
+            } else {
+                statusDiv.className = 'connection-status disconnected';
+                statusDiv.innerHTML = '🔴 未连接到 ESP32';
+                statusText.textContent = '未连接';
+            }
+        }
+        
+        function enableControls(enabled) {
+            const buttons = ['saveBtn', 'listBtn', 'runBtn', 'uploadBtn', 'infoBtn', 'restartBtn'];
+            buttons.forEach(id => {
+                document.getElementById(id).disabled = !enabled;
+            });
+            document.getElementById('disconnectBtn').disabled = !enabled;
+            document.getElementById('connectBtn').disabled = enabled;
+        }
+        
+        function logMessage(message, type = 'info') {
+            const logContainer = document.getElementById('outputLog');
+            const logEntry = document.createElement('div');
+            
+            logEntry.className = `log-entry log-${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<span style="color: #7f8c8d;">[${timestamp}]</span> ${message}`;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // 同时在终端显示
+            const terminal = document.getElementById('terminalOutput');
+            if (terminal) {
+                const terminalEntry = document.createElement('div');
+                terminalEntry.textContent = `[${timestamp}] ${message}`;
+                terminal.appendChild(terminalEntry);
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        }
+        
+        function displayFileList(files) {
+            const fileListDiv = document.getElementById('fileList');
+            fileListDiv.innerHTML = '';
+            
+            if (files.length === 0) {
+                fileListDiv.innerHTML = '<div style="padding: 10px; color: #7f8c8d; text-align: center;">没有文件</div>';
+                return;
+            }
+            
+            files.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div>
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <div class="delete-file" onclick="deleteFile('${file.name}')">删除</div>
+                `;
+                fileListDiv.appendChild(fileItem);
+            });
+        }
+        
+        function displayExecutionResult(result) {
+            logMessage('执行结果:', 'success');
+            if (result.output) {
+                logMessage(`输出: ${result.output}`, 'info');
+            }
+            if (result.memory_free) {
+                logMessage(`剩余内存: ${result.memory_free} 字节`, 'info');
+            }
+        }
+        
+        function showProgressBar(show) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.display = show ? 'block' : 'none';
+        }
+        
+        function updateProgress(percent) {
+            const progressFill = document.getElementById('progressFill');
+            progressFill.style.width = `${percent}%`;
+            progressFill.textContent = `${Math.round(percent)}%`;
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        // 页面卸载时断开连接
+        window.addEventListener('beforeunload', () => {
+            if (isConnected) {
+                disconnectDevice();
+            }
+        });
+        
+        // 初始化日志
+        logMessage('ESP32无线编程器已就绪', 'info');
+        logMessage('点击"扫描并连接设备"开始使用', 'info');
+        
+    </script>
+</body>
+</html>
