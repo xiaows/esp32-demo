@@ -343,6 +343,7 @@ import time
 led = Pin(2, Pin.OUT)
 
 while True:
+    print(111)
     led.value(not led.value())
     time.sleep(0.5)</textarea>
                 </div>
@@ -403,8 +404,8 @@ while True:
                     <h3>🎯 示例代码</h3>
                     <button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>
                     <button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>
-                    <button class="example-btn" onclick="loadExample('wifi')">WiFi连接</button>
-                    <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button>
+                    <!-- <button class="example-btn" onclick="loadExample('wifi')">WiFi连接</button> -->
+                    <!-- <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button> -->
                 </div>
                 
                 <div class="control-group">
@@ -477,9 +478,9 @@ while True:
         async function connectDevice() {
             try {
                 logMessage('正在扫描ESP32设备...', 'info');
-                
+
                 device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
+                    filters: [{ name: 'ESP32-CodeLoader' }],
                     optionalServices: [SERVICE_UUID]
                 });
                 
@@ -656,7 +657,7 @@ while True:
                 alert('请输入代码');
                 return;
             }
-            
+
             // 显示文件名输入框
             document.getElementById('fileNameModal').style.display = 'flex';
             window.confirmSaveCallback = async () => {
@@ -665,19 +666,25 @@ while True:
                     alert('请输入文件名');
                     return;
                 }
-                
+
                 if (!filename.endsWith('.py')) {
                     alert('文件名应以 .py 结尾');
                     return;
                 }
-                
-                await sendCommand({
-                    type: 'save',
-                    code: code,
-                    filename: filename
-                });
-                
+
                 document.getElementById('fileNameModal').style.display = 'none';
+
+                // 使用分块传输方式保存代码
+                try {
+                    // 先发送 start_upload 命令
+                    await sendCommand({
+                        type: 'start_upload',
+                        filename: filename,
+                        size: new TextEncoder().encode(code).length
+                    });
+                } catch (error) {
+                    logMessage(`保存失败: ${error.message}`, 'error');
+                }
             };
         }
         
@@ -792,6 +799,7 @@ led = Pin(2, Pin.OUT)
 print("开始LED闪烁...")
 
 while True:
+    print(111)
     led.value(not led.value())
     print(f"LED状态: {led.value()}")
     time.sleep(0.5)`,

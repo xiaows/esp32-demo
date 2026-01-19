@@ -16,10 +16,12 @@ class ESP32_BLE():
         self.name = name
         self.ble = ubluetooth.BLE()
         self.ble.active(True)
+        sleep_ms(100)  # 等待 BLE 初始化完成
         self.ble.config(gap_name=name)
         self.disconnected()
         self.ble.irq(self.ble_irq)
         self.register()
+        sleep_ms(100)  # 等待服务注册完成
         self.advertiser()
 
         # 文件传输状态
@@ -27,7 +29,9 @@ class ESP32_BLE():
         self.current_filename = None
         self.file_buffer = bytearray()
         self.expected_size = 0
-        self.conn_handle = 0
+        self.conn_handle = None  # 改为 None 表示未连接
+        self.is_connected = False  # 添加连接状态标志
+        self.need_advertise = False  # 需要重新广播的标志
 
         print("ESP32代码执行器已启动")
         print("可用命令: run, save, list, delete, reboot, info")
@@ -47,12 +51,15 @@ class ESP32_BLE():
     def ble_irq(self, event, data):
         """蓝牙中断回调"""
         if event == 1:  # _IRQ_CENTRAL_CONNECT
-            self.conn_handle, _, _ = data
+            self.conn_handle = data[0]
+            self.is_connected = True
+            print(f"conn_handle: {self.conn_handle}, is_connected: {self.is_connected}")
             self.connected()
 
         elif event == 2:  # _IRQ_CENTRAL_DISCONNECT
-            self.conn_handle = 0
-            self.advertiser()
+            self.conn_handle = None
+            self.is_connected = False
+            self.need_advertise = True  # 设置标志，在主循环中重新广播
             self.disconnected()
 
         elif event == 3:  # _IRQ_GATTS_WRITE
@@ -102,7 +109,8 @@ class ESP32_BLE():
 
     def send_response(self, status, message="", data=None):
         """发送JSON响应到客户端"""
-        if self.conn_handle == 0:
+        if not self.is_connected:
+            print("警告：未连接，无法发送响应")
             return
 
         response = {
@@ -113,6 +121,7 @@ class ESP32_BLE():
 
         try:
             response_str = json.dumps(response)
+            print(f"发送响应: {response_str[:100]}...")  # 只打印前100字符
             self.ble.gatts_notify(self.conn_handle, self.tx, response_str.encode('utf-8'))
         except Exception as e:
             print(f"发送响应失败: {e}")
@@ -157,6 +166,7 @@ class ESP32_BLE():
         """开始文件上传"""
         filename = command.get('filename')
         total_size = command.get('size', 0)
+        print(f"开始上传 - 文件名: {filename}, 大小: {total_size}")
 
         if not filename:
             self.send_response("ERROR", "需要文件名")
@@ -167,10 +177,12 @@ class ESP32_BLE():
         self.file_buffer = bytearray()
         self.expected_size = total_size
 
+        print("发送 READY 响应...")
         self.send_response("READY", f"准备接收文件: {filename}", {
             "filename": filename,
             "buffer_size": 0
         })
+        print("READY 响应已发送")
 
     def process_code_data(self, data):
         """处理代码数据块"""
@@ -211,10 +223,16 @@ class ESP32_BLE():
         """执行代码"""
         code = command.get('code')
         filename = command.get('filename')
+        print(f"执行代码 - 代码长度: {len(code) if code else 0}, 文件名: {filename}")
 
         try:
             if code:
+                # 检查是否有无限循环
+                if 'while True' in code or 'while 1' in code:
+                    print("警告：代码包含无限循环，可能会阻塞！")
+                print("开始执行代码...")
                 result = self.execute_code(code)
+                print("代码执行完成")
                 self.send_response("SUCCESS", "代码执行完成", {
                     "result": result,
                     "type": "direct"
@@ -228,22 +246,25 @@ class ESP32_BLE():
             else:
                 self.send_response("ERROR", "需要代码或文件名")
         except Exception as e:
+            print(f"执行异常: {e}")
             self.send_response("ERROR", f"执行失败: {str(e)}")
 
     def execute_code(self, code):
         """执行代码字符串"""
         import machine
-        local_vars = {
-            '__builtins__': __builtins__,
+        import time
+        # MicroPython 兼容的执行环境
+        exec_globals = {
             'print': print,
             'Pin': Pin,
             'Timer': Timer,
             'machine': machine,
+            'time': time,
             'os': os,
             'gc': gc
         }
 
-        exec(code, local_vars)
+        exec(code, exec_globals)
 
         return {
             "output": "代码执行成功",
@@ -264,19 +285,23 @@ class ESP32_BLE():
         """保存代码到文件"""
         code = command.get('code')
         filename = command.get('filename')
+        print(f"保存请求 - 文件名: {filename}, 代码长度: {len(code) if code else 0}")
 
         if not code or not filename:
+            print("错误：缺少代码或文件名")
             self.send_response("ERROR", "需要代码和文件名")
             return
 
         try:
             with open(filename, 'w') as f:
                 f.write(code)
+            print(f"文件保存成功: {filename}")
             self.send_response("SUCCESS", f"代码保存成功: {filename}", {
                 "filename": filename,
                 "size": len(code)
             })
         except Exception as e:
+            print(f"保存异常: {e}")
             self.send_response("ERROR", f"保存失败: {str(e)}")
 
     def list_files(self):
@@ -374,6 +399,15 @@ if __name__ == "__main__":
 
     # 主循环
     while True:
+        # 检查是否需要重新广播
+        if ble.need_advertise:
+            ble.need_advertise = False
+            sleep_ms(100)  # 等待 BLE 状态稳定
+            try:
+                ble.advertiser()
+            except OSError as e:
+                print(f"重新广播失败: {e}")
+
         if button_flag:
             button_flag = False
             led.value(not led.value())
