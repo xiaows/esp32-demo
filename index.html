@@ -336,16 +336,19 @@
                 <div id="editorTab" class="editor-container">
                     <textarea id="codeEditor" style="width: 100%; height: 100%; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 14px; padding: 15px; border: none; resize: none; outline: none;"># ESP32 MicroPython 代码编辑器
 # 通过蓝牙无线编程
+# 使用 while not should_stop() 实现可停止的循环
 
 from machine import Pin
 import time
 
 led = Pin(2, Pin.OUT)
 
-while True:
-    print(111)
+while not should_stop():
     led.value(not led.value())
-    time.sleep(0.5)</textarea>
+    time.sleep(0.5)
+
+led.value(0)
+print("已停止")</textarea>
                 </div>
                 
                 <div id="terminalTab" class="editor-container" style="display: none;">
@@ -381,6 +384,7 @@ while True:
                     <button onclick="saveCode()" id="saveBtn" disabled>保存代码到ESP32</button>
                     <button onclick="listFiles()" id="listBtn" disabled>列出文件</button>
                     <button onclick="runCode()" id="runBtn" disabled>▶ 执行代码</button>
+                    <button onclick="stopCode()" id="stopBtn" disabled class="btn-danger">⏹ 停止执行</button>
                     <button onclick="uploadFile()" id="uploadBtn" disabled>📤 上传文件</button>
                 </div>
                 
@@ -779,6 +783,11 @@ while True:
                 await sendCommand({ type: 'reboot' });
             }
         }
+
+        // 停止代码执行
+        async function stopCode() {
+            await sendCommand({ type: 'stop' });
+        }
         
         // 清空编辑器
         function clearEditor() {
@@ -790,21 +799,23 @@ while True:
         // 加载示例代码
         function loadExample(exampleName) {
             const examples = {
-                blink: `# LED闪烁示例
+                blink: `# LED闪烁示例（可停止）
 from machine import Pin
 import time
 
 led = Pin(2, Pin.OUT)
 
-print("开始LED闪烁...")
+print("开始LED闪烁... 发送stop命令可停止")
 
-while True:
-    print(111)
+while not should_stop():
     led.value(not led.value())
     print(f"LED状态: {led.value()}")
-    time.sleep(0.5)`,
+    time.sleep(0.5)
 
-                sensor: `# 传感器读取示例
+led.value(0)
+print("LED闪烁已停止")`,
+
+                sensor: `# 传感器读取示例（可停止）
 from machine import Pin, ADC
 import time
 
@@ -813,13 +824,15 @@ sensor_pin = Pin(34, Pin.IN)
 adc = ADC(sensor_pin)
 adc.atten(ADC.ATTN_11DB)  # 设置量程
 
-print("开始读取传感器...")
+print("开始读取传感器... 发送stop命令可停止")
 
-while True:
+while not should_stop():
     value = adc.read()
     voltage = value / 4095 * 3.3  # ESP32 ADC是12位
     print(f"ADC值: {value}, 电压: {voltage:.2f}V")
-    time.sleep(1)`,
+    time.sleep(1)
+
+print("传感器读取已停止")`,
 
                 wifi: `# WiFi连接示例
 import network
@@ -919,7 +932,7 @@ while True:
         }
         
         function enableControls(enabled) {
-            const buttons = ['saveBtn', 'listBtn', 'runBtn', 'uploadBtn', 'infoBtn', 'restartBtn'];
+            const buttons = ['saveBtn', 'listBtn', 'runBtn', 'stopBtn', 'uploadBtn', 'infoBtn', 'restartBtn'];
             buttons.forEach(id => {
                 document.getElementById(id).disabled = !enabled;
             });

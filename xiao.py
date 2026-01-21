@@ -4,6 +4,7 @@ import ubluetooth
 import json
 import os
 import gc
+import _thread
 
 # 配置参数
 BLE_DEVICE_NAME = "ESP32-CodeLoader"  # 与 index.html 匹配
@@ -32,9 +33,11 @@ class ESP32_BLE():
         self.conn_handle = None  # 改为 None 表示未连接
         self.is_connected = False  # 添加连接状态标志
         self.need_advertise = False  # 需要重新广播的标志
+        self.code_running = False  # 代码运行状态
+        self.stop_flag = False  # 停止标志
 
         print("ESP32代码执行器已启动")
-        print("可用命令: run, save, list, delete, reboot, info")
+        print("可用命令: run, save, list, delete, reboot, info, stop")
 
     def connected(self):
         """连接成功：LED常亮"""
@@ -156,6 +159,8 @@ class ESP32_BLE():
                 self.get_system_info()
             elif cmd_type == 'start_upload':
                 self.start_file_upload(command)
+            elif cmd_type == 'stop':
+                self.stop_code()
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
@@ -225,35 +230,65 @@ class ESP32_BLE():
         filename = command.get('filename')
         print(f"执行代码 - 代码长度: {len(code) if code else 0}, 文件名: {filename}")
 
+        if self.code_running:
+            self.send_response("ERROR", "已有代码在运行，请先发送stop命令")
+            return
+
         try:
             if code:
-                # 检查是否有无限循环
                 if 'while True' in code or 'while 1' in code:
-                    print("警告：代码包含无限循环，可能会阻塞！")
-                print("开始执行代码...")
-                result = self.execute_code(code)
-                print("代码执行完成")
-                self.send_response("SUCCESS", "代码执行完成", {
-                    "result": result,
-                    "type": "direct"
-                })
+                    print("检测到循环，将在线程中运行")
+                self.send_response("INFO", "代码开始执行...")
+                _thread.start_new_thread(self._run_code_thread, (code,))
             elif filename:
-                result = self.execute_file(filename)
-                self.send_response("SUCCESS", f"文件执行完成: {filename}", {
-                    "result": result,
-                    "filename": filename
-                })
+                if not self.file_exists(filename):
+                    self.send_response("ERROR", f"文件不存在: {filename}")
+                    return
+                with open(filename, 'r') as f:
+                    code = f.read()
+                self.send_response("INFO", f"开始执行文件: {filename}")
+                _thread.start_new_thread(self._run_code_thread, (code,))
             else:
                 self.send_response("ERROR", "需要代码或文件名")
         except Exception as e:
             print(f"执行异常: {e}")
             self.send_response("ERROR", f"执行失败: {str(e)}")
 
+    def _run_code_thread(self, code):
+        """在线程中执行代码"""
+        self.code_running = True
+        self.stop_flag = False
+
+        try:
+            self.execute_code(code)
+            if not self.stop_flag:
+                self.send_response("SUCCESS", "代码执行完成", {
+                    "memory_free": gc.mem_free()
+                })
+        except Exception as e:
+            if not self.stop_flag:
+                self.send_response("ERROR", f"执行出错: {str(e)}")
+        finally:
+            self.code_running = False
+            print("线程执行结束")
+
+    def stop_code(self):
+        """停止正在运行的代码"""
+        if self.code_running:
+            self.stop_flag = True
+            self.send_response("INFO", "正在停止代码...")
+        else:
+            self.send_response("INFO", "没有正在运行的代码")
+
     def execute_code(self, code):
         """执行代码字符串"""
         import machine
         import time
-        # MicroPython 兼容的执行环境
+
+        # 提供stop_flag检查函数给用户代码
+        def should_stop():
+            return self.stop_flag
+
         exec_globals = {
             'print': print,
             'Pin': Pin,
@@ -261,16 +296,11 @@ class ESP32_BLE():
             'machine': machine,
             'time': time,
             'os': os,
-            'gc': gc
+            'gc': gc,
+            'should_stop': should_stop  # 用户可调用检查是否需要停止
         }
 
         exec(code, exec_globals)
-
-        return {
-            "output": "代码执行成功",
-            "memory_free": gc.mem_free(),
-            "memory_alloc": gc.mem_alloc()
-        }
 
     def execute_file(self, filename):
         """执行文件"""
