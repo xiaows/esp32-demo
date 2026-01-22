@@ -290,6 +290,7 @@ class ESP32_BLE():
             return self.stop_flag
 
         exec_globals = {
+            '__builtins__': __builtins__,  # 允许用户代码使用 import 语句
             'print': print,
             'Pin': Pin,
             'Timer': Timer,
