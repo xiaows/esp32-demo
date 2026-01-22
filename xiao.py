@@ -289,8 +289,9 @@ class ESP32_BLE():
         def should_stop():
             return self.stop_flag
 
-        exec_globals = {
-            '__builtins__': __builtins__,  # 允许用户代码使用 import 语句
+        # 使用 globals() 作为基础，这样 import 语句可以正常工作
+        exec_globals = globals().copy()
+        exec_globals.update({
             'print': print,
             'Pin': Pin,
             'Timer': Timer,
@@ -299,7 +300,7 @@ class ESP32_BLE():
             'os': os,
             'gc': gc,
             'should_stop': should_stop  # 用户可调用检查是否需要停止
-        }
+        })
 
         exec(code, exec_globals)
 
