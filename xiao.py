@@ -27,6 +27,7 @@ class ESP32_BLE():
 
         # 文件传输状态
         self.receiving_file = False
+        self.receiving_code = False  # 新增：接收代码执行的状态
         self.current_filename = None
         self.file_buffer = bytearray()
         self.expected_size = 0
@@ -159,6 +160,8 @@ class ESP32_BLE():
                 self.get_system_info()
             elif cmd_type == 'start_upload':
                 self.start_file_upload(command)
+            elif cmd_type == 'start_run':
+                self.start_code_run(command)
             elif cmd_type == 'stop':
                 self.stop_code()
             else:
@@ -178,6 +181,7 @@ class ESP32_BLE():
             return
 
         self.receiving_file = True
+        self.receiving_code = False
         self.current_filename = filename
         self.file_buffer = bytearray()
         self.expected_size = total_size
@@ -189,9 +193,29 @@ class ESP32_BLE():
         })
         print("READY 响应已发送")
 
+    def start_code_run(self, command):
+        """开始接收代码执行（分块传输）"""
+        total_size = command.get('size', 0)
+        print(f"开始接收代码执行 - 大小: {total_size}")
+
+        if self.code_running:
+            self.send_response("ERROR", "已有代码在运行，请先发送stop命令")
+            return
+
+        self.receiving_file = False
+        self.receiving_code = True
+        self.file_buffer = bytearray()
+        self.expected_size = total_size
+
+        print("发送 READY_RUN 响应...")
+        self.send_response("READY_RUN", "准备接收代码", {
+            "buffer_size": 0
+        })
+        print("READY_RUN 响应已发送")
+
     def process_code_data(self, data):
         """处理代码数据块"""
-        if not self.receiving_file:
+        if not self.receiving_file and not self.receiving_code:
             self.send_response("ERROR", "未处于接收状态")
             return
 
@@ -199,7 +223,10 @@ class ESP32_BLE():
         progress = (len(self.file_buffer) / self.expected_size * 100) if self.expected_size > 0 else 0
 
         if len(self.file_buffer) >= self.expected_size:
-            self.save_complete_file()
+            if self.receiving_file:
+                self.save_complete_file()
+            elif self.receiving_code:
+                self.execute_received_code()
         else:
             self.send_response("PROGRESS", "接收中...", {
                 "received": len(self.file_buffer),
@@ -222,6 +249,20 @@ class ESP32_BLE():
         finally:
             self.receiving_file = False
             self.current_filename = None
+            self.file_buffer = bytearray()
+
+    def execute_received_code(self):
+        """执行接收到的代码"""
+        try:
+            code = self.file_buffer.decode('utf-8')
+            print(f"执行接收到的代码，长度: {len(code)}")
+
+            self.send_response("INFO", "代码开始执行...")
+            _thread.start_new_thread(self._run_code_thread, (code,))
+        except Exception as e:
+            self.send_response("ERROR", f"代码执行失败: {str(e)}")
+        finally:
+            self.receiving_code = False
             self.file_buffer = bytearray()
 
     def run_code(self, command):

@@ -644,6 +644,11 @@ print("已停止")</textarea>
                     logMessage(`准备接收文件: ${data.filename}`, 'info');
                     startFileUpload(data.filename);
                     break;
+
+                case 'READY_RUN':
+                    logMessage('准备发送代码执行...', 'info');
+                    startCodeRun();
+                    break;
                     
                 case 'PROGRESS':
                     updateProgress(data.progress);
@@ -712,11 +717,27 @@ print("已停止")</textarea>
                 alert('请输入代码');
                 return;
             }
-            
-            await sendCommand({
-                type: 'run',
-                code: code
-            });
+
+            const encoder = new TextEncoder();
+            const codeBytes = encoder.encode(code);
+
+            // 如果代码较短，直接通过命令发送
+            // JSON 命令格式: {"type":"run","code":"..."} 需要预留约50字节
+            if (codeBytes.length < 450) {
+                await sendCommand({
+                    type: 'run',
+                    code: code
+                });
+            } else {
+                // 代码较长，使用分块传输
+                logMessage('代码较长，使用分块传输...', 'info');
+
+                // 发送 start_run 命令，通知ESP32准备接收代码
+                await sendCommand({
+                    type: 'start_run',
+                    size: codeBytes.length
+                });
+            }
         }
         
         // 上传文件（大文件）
@@ -726,31 +747,48 @@ print("已停止")</textarea>
                 alert('请输入代码');
                 return;
             }
-            
+
             const filename = prompt('输入文件名:', 'main.py');
             if (!filename) return;
-            
+
             // 发送开始上传命令
             await sendCommand({
                 type: 'start_upload',
                 filename: filename,
-                size: code.length
+                size: new TextEncoder().encode(code).length
             });
         }
         
         // 开始文件上传
         async function startFileUpload(filename) {
             const code = editor.value;
-            
+
             try {
                 showProgressBar(true);
                 await sendFileData(code);
                 showProgressBar(false);
-                
+
                 logMessage(`文件上传完成: ${filename}`, 'success');
-                
+
             } catch (error) {
                 logMessage(`上传失败: ${error.message}`, 'error');
+                showProgressBar(false);
+            }
+        }
+
+        // 开始代码执行（分块传输）
+        async function startCodeRun() {
+            const code = editor.value;
+
+            try {
+                showProgressBar(true);
+                await sendFileData(code);
+                showProgressBar(false);
+
+                logMessage('代码已发送，等待执行...', 'info');
+
+            } catch (error) {
+                logMessage(`代码发送失败: ${error.message}`, 'error');
                 showProgressBar(false);
             }
         }
