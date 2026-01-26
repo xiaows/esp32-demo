@@ -323,7 +323,7 @@
     <div class="container">
         <div class="header">
             <h1>📡 ESP32 无线编程器</h1>
-            <p>通过蓝牙给ESP32发送并执行Python代码</p>
+            <p>通过蓝牙或USB给ESP32发送并执行Python代码</p>
         </div>
         
         <div class="content">
@@ -334,9 +334,7 @@
                 </div>
                 
                 <div id="editorTab" class="editor-container">
-                    <textarea id="codeEditor" style="width: 100%; height: 100%; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 14px; padding: 15px; border: none; resize: none; outline: none;"># ESP32 MicroPython 代码编辑器
-# 通过蓝牙无线编程
-# 使用 while not should_stop() 实现可停止的循环
+                    <textarea id="codeEditor" style="width: 100%; height: 100%; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 14px; padding: 15px; border: none; resize: none; outline: none;">
 
 from machine import Pin
 import time
@@ -344,6 +342,7 @@ import time
 led = Pin(2, Pin.OUT)
 
 while not should_stop():
+    print("已运行")
     led.value(not led.value())
     time.sleep(0.5)
 
@@ -375,6 +374,16 @@ print("已停止")</textarea>
                 
                 <div class="control-group">
                     <h3>📡 连接控制</h3>
+                    <div class="connection-type">
+                        <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <input type="radio" name="connType" value="ble" checked style="margin-right: 8px;">
+                            <span>蓝牙 (BLE)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <input type="radio" name="connType" value="usb" style="margin-right: 8px;">
+                            <span>USB 串口</span>
+                        </label>
+                    </div>
                     <button id="connectBtn" onclick="connectDevice()">扫描并连接设备</button>
                     <button id="disconnectBtn" onclick="disconnectDevice()" disabled>断开连接</button>
                 </div>
@@ -399,18 +408,18 @@ print("已停止")</textarea>
                 
                 <div class="control-group">
                     <h3>⚙️ 系统命令</h3>
-                    <button onclick="getSystemInfo()" id="infoBtn" disabled>系统信息</button>
+                    <!-- <button onclick="getSystemInfo()" id="infoBtn" disabled>系统信息</button> -->
                     <button onclick="restartESP32()" id="restartBtn" disabled class="btn-warning">重启ESP32</button>
                     <button onclick="clearEditor()" class="btn-danger">清空编辑器</button>
                 </div>
                 
-                <div class="examples">
-                    <h3>🎯 示例代码</h3>
-                    <button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>
-                    <button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>
+                 <!--<div class="examples">-->
+                     <!--<h3>🎯 示例代码</h3>-->
+                     <!--<button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>-->
+                    <!--<button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>-->
                     <!-- <button class="example-btn" onclick="loadExample('wifi')">WiFi连接</button> -->
                     <!-- <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button> -->
-                </div>
+                 <!--</div>-->
                 
                 <div class="control-group">
                     <h3>📊 输出日志</h3>
@@ -449,6 +458,15 @@ print("已停止")</textarea>
         let codeCharacteristic = null; // 大文件传输
         let isConnected = false;
 
+        // USB串口相关变量
+        let usbPort = null;
+        let usbReader = null;
+        let usbWriter = null;
+        let usbReadableStreamClosed = null;
+        let usbWritableStreamClosed = null;
+        let usbKeepReading = false;
+        let connectionType = 'ble';  // 'ble' 或 'usb'
+
         // 编辑器引用
         const editor = document.getElementById('codeEditor');
 
@@ -480,6 +498,147 @@ print("已停止")</textarea>
         
         // 连接设备
         async function connectDevice() {
+            // 获取选择的连接类型
+            connectionType = document.querySelector('input[name="connType"]:checked').value;
+
+            if (connectionType === 'usb') {
+                await connectUSB();
+            } else {
+                await connectBLE();
+            }
+        }
+
+        // USB串口连接
+        async function connectUSB() {
+            try {
+                if (!('serial' in navigator)) {
+                    logMessage('错误：浏览器不支持Web Serial API，请使用Chrome/Edge浏览器', 'error');
+                    return;
+                }
+
+                logMessage('正在选择串口设备...', 'info');
+
+                usbPort = await navigator.serial.requestPort();
+                await usbPort.open({ baudRate: 115200 });
+
+                logMessage('USB串口已连接', 'success');
+
+                // 设置读取器（使用更简单的方式）
+                usbKeepReading = true;
+                usbReader = usbPort.readable.getReader();
+                usbWriter = usbPort.writable.getWriter();
+
+                isConnected = true;
+                updateConnectionStatus(true, 'USB');
+                enableControls(true);
+
+                // 开始读取串口数据
+                readUSBData();
+
+            } catch (error) {
+                logMessage(`USB连接失败: ${error.message}`, 'error');
+                updateConnectionStatus(false);
+            }
+        }
+
+        // 读取USB串口数据
+        async function readUSBData() {
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            try {
+                while (usbKeepReading && usbReader) {
+                    const { value, done } = await usbReader.read();
+                    if (done) {
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // 处理完整的行
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        processUSBLine(line.trim());
+                    }
+                }
+            } catch (error) {
+                if (usbKeepReading && isConnected) {
+                    logMessage(`USB读取错误: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // 处理USB串口接收的数据行
+        function processUSBLine(line) {
+            if (!line) return;
+
+            // 检查是否是JSON响应
+            if (line.startsWith('USB_RESP:')) {
+                try {
+                    const jsonStr = line.substring(9);
+                    const response = JSON.parse(jsonStr);
+                    processResponse(response);
+                } catch (e) {
+                    logMessage(`接收数据: ${line}`, 'info');
+                }
+            } else {
+                // 普通输出
+                logMessage(`ESP32: ${line}`, 'info');
+            }
+        }
+
+        // 通过USB发送命令
+        async function sendUSBCommand(command) {
+            if (!isConnected || !usbWriter) {
+                logMessage('错误：USB未连接', 'error');
+                return;
+            }
+
+            try {
+                const encoder = new TextEncoder();
+                const commandStr = JSON.stringify(command) + '\n';
+                await usbWriter.write(encoder.encode(commandStr));
+                logMessage(`发送USB命令: ${command.type}`, 'info');
+            } catch (error) {
+                logMessage(`USB发送失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 通过USB发送大文件数据（Base64编码，同步模式）
+        async function sendUSBFileData(data) {
+            if (!isConnected || !usbWriter) {
+                throw new Error('USB未连接');
+            }
+
+            const encoder = new TextEncoder();
+            const dataEncoder = new TextEncoder();
+            const buffer = dataEncoder.encode(data);
+
+            // USB模式：更小的分块 + 等待确认
+            const chunkSize = 128;  // 减小分块大小，提高可靠性
+            const totalChunks = Math.ceil(buffer.length / chunkSize);
+
+            for (let i = 0; i < buffer.length; i += chunkSize) {
+                const chunk = buffer.slice(i, i + chunkSize);
+                const base64 = btoa(String.fromCharCode.apply(null, chunk));
+
+                await usbWriter.write(encoder.encode('DATA:' + base64 + '\n'));
+
+                const progress = Math.min((i + chunk.length) / buffer.length * 100, 100);
+                updateProgress(progress);
+
+                // 等待更长时间让ESP32处理
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+
+            // 发送结束标记
+            await usbWriter.write(encoder.encode('END\n'));
+        }
+
+        // BLE连接
+        async function connectBLE() {
             try {
                 logMessage('正在扫描ESP32设备...', 'info');
 
@@ -487,37 +646,37 @@ print("已停止")</textarea>
                     filters: [{ name: 'ESP32-CodeLoader' }],
                     optionalServices: [SERVICE_UUID]
                 });
-                
+
                 logMessage(`找到设备: ${device.name || device.id}`, 'success');
-                
+
                 // 连接GATT服务器
                 logMessage('正在连接...', 'info');
                 server = await device.gatt.connect();
-                
+
                 // 获取服务
                 service = await server.getPrimaryService(SERVICE_UUID);
-                
+
                 // 获取特征
                 rxCharacteristic = await service.getCharacteristic(RX_CHARACTERISTIC_UUID);
                 txCharacteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
                 codeCharacteristic = await service.getCharacteristic(CODE_CHARACTERISTIC_UUID);
-                
+
                 // 监听通知
                 await txCharacteristic.startNotifications();
                 txCharacteristic.addEventListener('characteristicvaluechanged', handleResponse);
-                
+
                 // 更新连接状态
                 isConnected = true;
-                updateConnectionStatus(true);
-                
+                updateConnectionStatus(true, 'BLE');
+
                 logMessage('连接成功！', 'success');
-                
+
                 // 启用控制按钮
                 enableControls(true);
-                
+
                 // 监听断开事件
                 device.addEventListener('gattserverdisconnected', onDisconnected);
-                
+
             } catch (error) {
                 logMessage(`连接失败: ${error.message}`, 'error');
                 updateConnectionStatus(false);
@@ -526,6 +685,40 @@ print("已停止")</textarea>
         
         // 断开连接
         async function disconnectDevice() {
+            if (connectionType === 'usb') {
+                await disconnectUSB();
+            } else {
+                await disconnectBLE();
+            }
+        }
+
+        // 断开USB连接
+        async function disconnectUSB() {
+            usbKeepReading = false;  // 先停止读取循环
+
+            try {
+                if (usbReader) {
+                    await usbReader.cancel();  // 取消读取
+                    usbReader.releaseLock();   // 释放锁
+                    usbReader = null;
+                }
+                if (usbWriter) {
+                    usbWriter.releaseLock();   // 释放锁
+                    usbWriter = null;
+                }
+                if (usbPort) {
+                    await usbPort.close();
+                    usbPort = null;
+                }
+                logMessage('USB已断开', 'info');
+            } catch (error) {
+                logMessage(`USB断开: ${error.message}`, 'info');
+            }
+            onDisconnected();
+        }
+
+        // 断开BLE连接
+        async function disconnectBLE() {
             if (device && device.gatt.connected) {
                 try {
                     await device.gatt.disconnect();
@@ -540,58 +733,70 @@ print("已停止")</textarea>
         // 断开处理
         function onDisconnected() {
             isConnected = false;
+            usbKeepReading = false;
             device = null;
             server = null;
             service = null;
             rxCharacteristic = null;
             txCharacteristic = null;
             codeCharacteristic = null;
-            
+            usbPort = null;
+            usbReader = null;
+            usbWriter = null;
+
             updateConnectionStatus(false);
             enableControls(false);
             logMessage('设备已断开', 'error');
         }
-        
+
         // 发送命令到ESP32
         async function sendCommand(command) {
+            if (connectionType === 'usb') {
+                return await sendUSBCommand(command);
+            }
+
             if (!isConnected || !rxCharacteristic) {
                 logMessage('错误：未连接到设备', 'error');
                 return null;
             }
-            
+
             try {
                 const commandStr = JSON.stringify(command);
                 const encoder = new TextEncoder();
                 const data = encoder.encode(commandStr);
-                
+
                 await rxCharacteristic.writeValue(data);
                 logMessage(`发送命令: ${command.type}`, 'info');
-                
+
             } catch (error) {
                 logMessage(`发送失败: ${error.message}`, 'error');
                 return null;
             }
         }
-        
+
         // 发送大文件数据
         async function sendFileData(data) {
+            if (connectionType === 'usb') {
+                return await sendUSBFileData(data);
+            }
+
             if (!isConnected || !codeCharacteristic) {
                 throw new Error('未连接到设备');
             }
-            
+
             const encoder = new TextEncoder();
             const buffer = encoder.encode(data);
-            
+
             // 分块发送（避免MTU限制）
             const chunkSize = 512; // BLE MTU通常为512字节
             for (let i = 0; i < buffer.length; i += chunkSize) {
                 const chunk = buffer.slice(i, i + chunkSize);
                 await codeCharacteristic.writeValue(chunk);
-                
+
                 // 更新进度
                 const progress = Math.min((i + chunk.length) / buffer.length * 100, 100);
                 updateProgress(progress);
-                
+
                 // 稍微延迟，避免阻塞
                 await new Promise(resolve => setTimeout(resolve, 10));
             }
@@ -616,12 +821,12 @@ print("已停止")</textarea>
             const status = response.status;
             const message = response.message;
             const data = response.data;
-            
+
             switch (status) {
                 case 'CONNECTED':
                     logMessage(message, 'success');
                     break;
-                    
+
                 case 'SUCCESS':
                     logMessage(`✓ ${message}`, 'success');
                     if (data && data.files) {
@@ -630,16 +835,32 @@ print("已停止")</textarea>
                     if (data && data.result) {
                         displayExecutionResult(data.result);
                     }
+                    // 如果是临时文件上传完成，自动执行
+                    if (data && data.filename === '_temp_run.py' && window.pendingRunAfterUpload) {
+                        window.pendingRunAfterUpload = false;
+                        logMessage('临时文件已保存，开始执行...', 'info');
+                        setTimeout(async () => {
+                            await sendCommand({
+                                type: 'run',
+                                filename: '_temp_run.py'
+                            });
+                        }, 100);
+                    }
                     break;
-                    
+
                 case 'ERROR':
                     logMessage(`✗ ${message}`, 'error');
                     break;
-                    
+
                 case 'INFO':
                     logMessage(`ℹ ${message}`, 'info');
                     break;
-                    
+
+                case 'OUTPUT':
+                    // 代码执行的print输出，显示在终端
+                    logOutput(message);
+                    break;
+
                 case 'READY':
                     logMessage(`准备接收文件: ${data.filename}`, 'info');
                     startFileUpload(data.filename);
@@ -649,11 +870,11 @@ print("已停止")</textarea>
                     logMessage('准备发送代码执行...', 'info');
                     startCodeRun();
                     break;
-                    
+
                 case 'PROGRESS':
                     updateProgress(data.progress);
                     break;
-                    
+
                 default:
                     logMessage(`未知响应: ${status} - ${message}`, 'info');
             }
@@ -722,19 +943,22 @@ print("已停止")</textarea>
             const codeBytes = encoder.encode(code);
 
             // 如果代码较短，直接通过命令发送
-            // JSON 命令格式: {"type":"run","code":"..."} 需要预留约50字节
             if (codeBytes.length < 450) {
                 await sendCommand({
                     type: 'run',
                     code: code
                 });
             } else {
-                // 代码较长，使用分块传输
-                logMessage('代码较长，使用分块传输...', 'info');
+                // 代码较长，先保存为临时文件再执行
+                logMessage('代码较长，使用文件模式执行...', 'info');
 
-                // 发送 start_run 命令，通知ESP32准备接收代码
+                // 标记为运行模式（上传完成后自动执行）
+                window.pendingRunAfterUpload = true;
+
+                // 发送 start_upload 命令，上传到临时文件
                 await sendCommand({
-                    type: 'start_run',
+                    type: 'start_upload',
+                    filename: '_temp_run.py',
                     size: codeBytes.length
                 });
             }
@@ -954,14 +1178,15 @@ while True:
         }
         
         // UI更新函数
-        function updateConnectionStatus(connected) {
+        function updateConnectionStatus(connected, type = '') {
             const statusDiv = document.getElementById('connectionStatus');
             const statusText = document.getElementById('statusText');
-            
+
             if (connected) {
+                const typeLabel = type === 'USB' ? '(USB)' : '(BLE)';
                 statusDiv.className = 'connection-status connected';
-                statusDiv.innerHTML = '✅ 已连接到 ESP32';
-                statusText.textContent = '已连接';
+                statusDiv.innerHTML = `✅ 已连接到 ESP32 ${typeLabel}`;
+                statusText.textContent = `已连接 ${typeLabel}`;
             } else {
                 statusDiv.className = 'connection-status disconnected';
                 statusDiv.innerHTML = '🔴 未连接到 ESP32';
@@ -970,7 +1195,7 @@ while True:
         }
         
         function enableControls(enabled) {
-            const buttons = ['saveBtn', 'listBtn', 'runBtn', 'stopBtn', 'uploadBtn', 'infoBtn', 'restartBtn'];
+            const buttons = ['saveBtn', 'listBtn', 'runBtn', 'stopBtn', 'uploadBtn', 'restartBtn'];
             buttons.forEach(id => {
                 document.getElementById(id).disabled = !enabled;
             });
@@ -981,20 +1206,45 @@ while True:
         function logMessage(message, type = 'info') {
             const logContainer = document.getElementById('outputLog');
             const logEntry = document.createElement('div');
-            
+
             logEntry.className = `log-entry log-${type}`;
-            
+
             const timestamp = new Date().toLocaleTimeString();
             logEntry.innerHTML = `<span style="color: #7f8c8d;">[${timestamp}]</span> ${message}`;
-            
+
             logContainer.appendChild(logEntry);
             logContainer.scrollTop = logContainer.scrollHeight;
-            
+
             // 同时在终端显示
             const terminal = document.getElementById('terminalOutput');
             if (terminal) {
                 const terminalEntry = document.createElement('div');
                 terminalEntry.textContent = `[${timestamp}] ${message}`;
+                terminal.appendChild(terminalEntry);
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        }
+
+        // 专门用于显示代码执行输出（类似控制台）
+        function logOutput(output) {
+            const logContainer = document.getElementById('outputLog');
+            const logEntry = document.createElement('div');
+
+            logEntry.className = 'log-entry';
+            logEntry.style.borderLeftColor = '#9b59b6';  // 紫色边框区分输出
+            logEntry.style.fontFamily = 'Consolas, monospace';
+            logEntry.innerHTML = `<span style="color: #9b59b6;">></span> ${output}`;
+
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+
+            // 在终端显示（更突出）
+            const terminal = document.getElementById('terminalOutput');
+            if (terminal) {
+                const terminalEntry = document.createElement('div');
+                terminalEntry.style.color = '#2ecc71';  // 绿色输出
+                terminalEntry.style.fontFamily = 'Consolas, monospace';
+                terminalEntry.textContent = `>>> ${output}`;
                 terminal.appendChild(terminalEntry);
                 terminal.scrollTop = terminal.scrollHeight;
             }
@@ -1059,6 +1309,7 @@ while True:
         
         // 初始化日志
         logMessage('ESP32无线编程器已就绪', 'info');
+        logMessage('支持蓝牙(BLE)和USB串口两种连接方式', 'info');
         logMessage('点击"扫描并连接设备"开始使用', 'info');
         
     </script>
