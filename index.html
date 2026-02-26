@@ -422,7 +422,9 @@ print("已停止")</textarea>
                  <!--</div>-->
                 
                 <div class="control-group">
-                    <h3>📊 输出日志</h3>
+                    <h3 style="display:flex;justify-content:space-between;align-items:center;">📊 输出日志
+                        <span onclick="clearLog()" style="font-size:12px;color:#e74c3c;cursor:pointer;border:1px solid #e74c3c;padding:2px 8px;border-radius:3px;">清除</span>
+                    </h3>
                     <div class="log-container" id="outputLog"></div>
                 </div>
             </div>
@@ -466,6 +468,10 @@ print("已停止")</textarea>
         let usbWritableStreamClosed = null;
         let usbKeepReading = false;
         let connectionType = 'ble';  // 'ble' 或 'usb'
+
+        // 命令计时
+        let commandStartTime = null;   // 当前命令发送时间
+        let commandType = null;        // 当前命令类型
 
         // 编辑器引用
         const editor = document.getElementById('codeEditor');
@@ -599,6 +605,11 @@ print("已停止")</textarea>
             try {
                 const encoder = new TextEncoder();
                 const commandStr = JSON.stringify(command) + '\n';
+
+                // 记录发送时间
+                commandStartTime = performance.now();
+                commandType = command.type;
+
                 await usbWriter.write(encoder.encode(commandStr));
                 logMessage(`发送USB命令: ${command.type}`, 'info');
             } catch (error) {
@@ -765,6 +776,10 @@ print("已停止")</textarea>
                 const encoder = new TextEncoder();
                 const data = encoder.encode(commandStr);
 
+                // 记录发送时间
+                commandStartTime = performance.now();
+                commandType = command.type;
+
                 await rxCharacteristic.writeValue(data);
                 logMessage(`发送命令: ${command.type}`, 'info');
 
@@ -822,13 +837,22 @@ print("已停止")</textarea>
             const message = response.message;
             const data = response.data;
 
+            // 计算耗时
+            let elapsed = '';
+            const isTerminal = ['SUCCESS', 'ERROR'].includes(status);
+            if (commandStartTime && isTerminal) {
+                const duration = performance.now() - commandStartTime;
+                elapsed = ` [耗时: ${duration.toFixed(1)}ms]`;
+                commandStartTime = null;
+            }
+
             switch (status) {
                 case 'CONNECTED':
                     logMessage(message, 'success');
                     break;
 
                 case 'SUCCESS':
-                    logMessage(`✓ ${message}`, 'success');
+                    logMessage(`✓ ${message}${elapsed}`, 'success');
                     if (data && data.files) {
                         displayFileList(data.files);
                     }
@@ -849,7 +873,7 @@ print("已停止")</textarea>
                     break;
 
                 case 'ERROR':
-                    logMessage(`✗ ${message}`, 'error');
+                    logMessage(`✗ ${message}${elapsed}`, 'error');
                     break;
 
                 case 'INFO':
@@ -1056,6 +1080,12 @@ print("已停止")</textarea>
             if (confirm('确定要清空编辑器吗？')) {
                 editor.value = '# 清空编辑器\n\n# 开始编写你的MicroPython代码...';
             }
+        }
+
+        // 清空输出日志
+        function clearLog() {
+            document.getElementById('outputLog').innerHTML = '';
+            document.getElementById('terminalOutput').innerHTML = '';
         }
         
         // 加载示例代码
