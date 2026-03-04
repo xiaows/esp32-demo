@@ -317,6 +317,190 @@
             background: white;
             border-bottom: 2px solid #3498db;
         }
+
+        /* 方向控制器 */
+        .dpad-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 0;
+        }
+
+        .dpad-row {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+        }
+
+        .dpad-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 8px;
+            border: 2px solid #2c3e50;
+            background: #34495e;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            user-select: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .dpad-btn:hover {
+            background: #3498db;
+            border-color: #2980b9;
+        }
+
+        .dpad-btn:active, .dpad-btn.active {
+            background: #2ecc71;
+            border-color: #27ae60;
+            transform: scale(0.92);
+        }
+
+        .dpad-btn.center {
+            background: #e74c3c;
+            border-color: #c0392b;
+            border-radius: 50%;
+        }
+
+        .dpad-btn.center:hover {
+            background: #ff6b6b;
+        }
+
+        .dpad-btn.center:active, .dpad-btn.center.active {
+            background: #ff4757;
+            transform: scale(0.92);
+        }
+
+        .dpad-placeholder {
+            width: 52px;
+            height: 52px;
+        }
+
+        .latency-display {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #1e1e1e;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            color: #2ecc71;
+            text-align: center;
+            width: 100%;
+        }
+
+        .latency-display .latency-label {
+            color: #7f8c8d;
+            font-size: 11px;
+        }
+
+        .latency-display .latency-value {
+            font-size: 22px;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+
+        .latency-display .latency-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: 4px;
+            border-top: 1px solid #333;
+            padding-top: 4px;
+        }
+
+        /* 摇杆控制器 */
+        .joystick-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 0;
+        }
+
+        .joystick-area {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #2c3e50 0%, #1a252f 100%);
+            border: 3px solid #34495e;
+            position: relative;
+            touch-action: none;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .joystick-thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #5dade2, #2e86c1);
+            border: 2px solid #2980b9;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: box-shadow 0.15s;
+        }
+
+        .joystick-thumb:active, .joystick-thumb.dragging {
+            cursor: grabbing;
+            box-shadow: 0 0 16px rgba(52, 152, 219, 0.6);
+        }
+
+        .joystick-crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        .joystick-crosshair::before,
+        .joystick-crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .joystick-crosshair::before {
+            width: 1px; height: 80%;
+            top: 10%; left: 50%;
+        }
+
+        .joystick-crosshair::after {
+            width: 80%; height: 1px;
+            top: 50%; left: 10%;
+        }
+
+        .joystick-info {
+            margin-top: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: #7f8c8d;
+            text-align: center;
+        }
+
+        .joystick-info .coord {
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .joystick-info .dir-label {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 2px 10px;
+            border-radius: 3px;
+            background: #34495e;
+            color: #2ecc71;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -421,6 +605,52 @@ print("已停止")</textarea>
                     <!-- <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button> -->
                  <!--</div>-->
                 
+                <div class="control-group">
+                    <h3>🎮 方向控制 (延迟测试)</h3>
+                    <div class="dpad-container">
+                        <div class="dpad-row">
+                            <div class="dpad-placeholder"></div>
+                            <button class="dpad-btn" data-dir="up" ontouchstart="dpadDown(this,event)" ontouchend="dpadUp(this,event)" onmousedown="dpadDown(this,event)" onmouseup="dpadUp(this,event)">▲</button>
+                            <div class="dpad-placeholder"></div>
+                        </div>
+                        <div class="dpad-row">
+                            <button class="dpad-btn" data-dir="left" ontouchstart="dpadDown(this,event)" ontouchend="dpadUp(this,event)" onmousedown="dpadDown(this,event)" onmouseup="dpadUp(this,event)">◀</button>
+                            <!-- <button class="dpad-btn center" data-dir="center" ontouchstart="dpadDown(this,event)" ontouchend="dpadUp(this,event)" onmousedown="dpadDown(this,event)" onmouseup="dpadUp(this,event)">●</button> -->
+                            <button class="dpad-btn" data-dir="right" ontouchstart="dpadDown(this,event)" ontouchend="dpadUp(this,event)" onmousedown="dpadDown(this,event)" onmouseup="dpadUp(this,event)">▶</button>
+                        </div>
+                        <div class="dpad-row">
+                            <div class="dpad-placeholder"></div>
+                            <button class="dpad-btn" data-dir="down" ontouchstart="dpadDown(this,event)" ontouchend="dpadUp(this,event)" onmousedown="dpadDown(this,event)" onmouseup="dpadUp(this,event)">▼</button>
+                            <div class="dpad-placeholder"></div>
+                        </div>
+                    </div>
+                    <div class="latency-display">
+                        <div class="latency-label">往返延迟 (RTT)</div>
+                        <div class="latency-value" id="latencyValue">-- ms</div>
+                        <div class="latency-stats">
+                            <span>最小: <span id="latencyMin">--</span></span>
+                            <span>平均: <span id="latencyAvg">--</span></span>
+                            <span>最大: <span id="latencyMax">--</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🕹 摇杆控制 (延迟测试)</h3>
+                    <div class="joystick-wrapper">
+                        <div class="joystick-area" id="joystickArea">
+                            <div class="joystick-crosshair"></div>
+                            <div class="joystick-thumb" id="joystickThumb"></div>
+                        </div>
+                        <div class="joystick-info">
+                            X: <span class="coord" id="jsX">0</span>
+                            Y: <span class="coord" id="jsY">0</span>
+                            <br>
+                            <span class="dir-label" id="jsDirLabel">居中</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="control-group">
                     <h3 style="display:flex;justify-content:space-between;align-items:center;">📊 输出日志
                         <span onclick="clearLog()" style="font-size:12px;color:#e74c3c;cursor:pointer;border:1px solid #e74c3c;padding:2px 8px;border-radius:3px;">清除</span>
@@ -1337,6 +1567,281 @@ while True:
             }
         });
         
+        // ========== 方向控制器 (延迟测试) ==========
+        let dpadLatencies = [];        // 历史延迟记录
+        let dpadPendingTime = null;    // 当前按下时间戳
+        let dpadPendingDir = null;     // 当前方向
+
+        function dpadDown(btn, e) {
+            e.preventDefault();
+            btn.classList.add('active');
+            const dir = btn.dataset.dir;
+
+            if (!isConnected) {
+                logMessage('方向控制：未连接设备', 'error');
+                return;
+            }
+
+            dpadPendingDir = dir;
+            dpadPendingTime = performance.now();
+
+            // 发送方向指令，ESP32 侧执行对应代码并返回响应
+            sendCommand({
+                type: 'run',
+                code: `print("DPAD:${dir}:${Date.now()}")`
+            });
+
+            logMessage(`方向: ${dir}`, 'info');
+        }
+
+        function dpadUp(btn, e) {
+            e.preventDefault();
+            btn.classList.remove('active');
+        }
+
+        // 拦截响应，计算方向控制器延迟
+        const _originalProcessResponse = processResponse;
+        processResponse = function(response) {
+            // 检测方向控制器的响应
+            if (dpadPendingTime && response.status === 'SUCCESS') {
+                const rtt = performance.now() - dpadPendingTime;
+                dpadPendingTime = null;
+                updateLatencyDisplay(rtt);
+            }
+            // 检测 OUTPUT 中的 DPAD 标记
+            if (dpadPendingTime && response.status === 'OUTPUT' &&
+                response.message && response.message.startsWith('DPAD:')) {
+                const rtt = performance.now() - dpadPendingTime;
+                dpadPendingTime = null;
+                updateLatencyDisplay(rtt);
+            }
+            _originalProcessResponse(response);
+        };
+
+        function updateLatencyDisplay(rtt) {
+            dpadLatencies.push(rtt);
+            // 只保留最近 50 条
+            if (dpadLatencies.length > 50) dpadLatencies.shift();
+
+            const min = Math.min(...dpadLatencies);
+            const max = Math.max(...dpadLatencies);
+            const avg = dpadLatencies.reduce((a, b) => a + b, 0) / dpadLatencies.length;
+
+            // 根据延迟着色
+            const valueEl = document.getElementById('latencyValue');
+            valueEl.textContent = rtt.toFixed(1) + ' ms';
+            if (rtt < 100) {
+                valueEl.style.color = '#2ecc71';       // 绿 - 优秀
+            } else if (rtt < 300) {
+                valueEl.style.color = '#f39c12';       // 橙 - 一般
+            } else {
+                valueEl.style.color = '#e74c3c';       // 红 - 较慢
+            }
+
+            document.getElementById('latencyMin').textContent = min.toFixed(1) + 'ms';
+            document.getElementById('latencyAvg').textContent = avg.toFixed(1) + 'ms';
+            document.getElementById('latencyMax').textContent = max.toFixed(1) + 'ms';
+        }
+
+        // 键盘方向键支持
+        document.addEventListener('keydown', function(e) {
+            const keyMap = {
+                'ArrowUp': 'up', 'ArrowDown': 'down',
+                'ArrowLeft': 'left', 'ArrowRight': 'right',
+                'Enter': 'center', ' ': 'center'
+            };
+            const dir = keyMap[e.key];
+            if (!dir) return;
+            // 编辑器聚焦时不拦截
+            if (document.activeElement === editor) return;
+            e.preventDefault();
+            const btn = document.querySelector(`.dpad-btn[data-dir="${dir}"]`);
+            if (btn && !btn.classList.contains('active')) {
+                dpadDown(btn, e);
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            const keyMap = {
+                'ArrowUp': 'up', 'ArrowDown': 'down',
+                'ArrowLeft': 'left', 'ArrowRight': 'right',
+                'Enter': 'center', ' ': 'center'
+            };
+            const dir = keyMap[e.key];
+            if (!dir) return;
+            if (document.activeElement === editor) return;
+            const btn = document.querySelector(`.dpad-btn[data-dir="${dir}"]`);
+            if (btn) dpadUp(btn, e);
+        });
+
+        // ========== 摇杆控制器 ==========
+        (function() {
+            const area = document.getElementById('joystickArea');
+            const thumb = document.getElementById('joystickThumb');
+            const xSpan = document.getElementById('jsX');
+            const ySpan = document.getElementById('jsY');
+            const dirLabel = document.getElementById('jsDirLabel');
+
+            let dragging = false;
+            let areaRect = null;
+            let radius = 0;
+            let centerX = 0;
+            let centerY = 0;
+            let sendTimer = null;
+            let lastSentDir = null;
+            let jsPendingTime = null;
+
+            function getDirection(nx, ny) {
+                // nx, ny 范围 -1 ~ 1
+                const deadzone = 0.25;
+                if (Math.abs(nx) < deadzone && Math.abs(ny) < deadzone) return '居中';
+                const angle = Math.atan2(-ny, nx) * 180 / Math.PI; // 上为正Y
+                if (angle >= -22.5 && angle < 22.5) return 'right';
+                if (angle >= 22.5 && angle < 67.5) return 'up-right';
+                if (angle >= 67.5 && angle < 112.5) return 'up';
+                if (angle >= 112.5 && angle < 157.5) return 'up-left';
+                if (angle >= 157.5 || angle < -157.5) return 'left';
+                if (angle >= -157.5 && angle < -112.5) return 'down-left';
+                if (angle >= -112.5 && angle < -67.5) return 'down';
+                if (angle >= -67.5 && angle < -22.5) return 'down-right';
+                return '居中';
+            }
+
+            const dirNames = {
+                '居中': '居中', 'up': '上', 'down': '下', 'left': '左', 'right': '右',
+                'up-left': '左上', 'up-right': '右上', 'down-left': '左下', 'down-right': '右下'
+            };
+
+            function updateThumb(clientX, clientY) {
+                let dx = clientX - centerX;
+                let dy = clientY - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxR = radius - 28; // thumb半径
+
+                if (dist > maxR) {
+                    dx = dx / dist * maxR;
+                    dy = dy / dist * maxR;
+                }
+
+                thumb.style.left = (radius + dx) + 'px';
+                thumb.style.top = (radius + dy) + 'px';
+                thumb.style.transform = 'translate(-50%, -50%)';
+
+                // 归一化坐标 -100 ~ 100
+                const nx = Math.round(dx / maxR * 100);
+                const ny = Math.round(-dy / maxR * 100); // Y轴反转，上为正
+
+                xSpan.textContent = nx;
+                ySpan.textContent = ny;
+
+                const dir = getDirection(nx / 100, ny / 100);
+                dirLabel.textContent = dirNames[dir] || dir;
+
+                return { nx, ny, dir };
+            }
+
+            function sendJoystickCommand(nx, ny, dir) {
+                if (!isConnected) return;
+                if (dir === '居中') return;
+                // 节流：方向不变时不重复发送
+                if (dir === lastSentDir) return;
+                lastSentDir = dir;
+
+                jsPendingTime = performance.now();
+                sendCommand({
+                    type: 'run',
+                    code: `print("JOY:${dir}:${nx}:${ny}")`
+                });
+                logMessage(`摇杆: ${dirNames[dir] || dir} (${nx}, ${ny})`, 'info');
+            }
+
+            function startDrag(e) {
+                e.preventDefault();
+                dragging = true;
+                thumb.classList.add('dragging');
+                areaRect = area.getBoundingClientRect();
+                radius = areaRect.width / 2;
+                centerX = areaRect.left + radius;
+                centerY = areaRect.top + radius;
+
+                const point = e.touches ? e.touches[0] : e;
+                const result = updateThumb(point.clientX, point.clientY);
+
+                // 持续发送定时器（每150ms检测一次方向变化）
+                sendTimer = setInterval(() => {
+                    if (!dragging) return;
+                    const dir = dirLabel.textContent;
+                    const nx = parseInt(xSpan.textContent);
+                    const ny = parseInt(ySpan.textContent);
+                    const dirKey = getDirection(nx / 100, ny / 100);
+                    sendJoystickCommand(nx, ny, dirKey);
+                }, 150);
+            }
+
+            function moveDrag(e) {
+                if (!dragging) return;
+                e.preventDefault();
+                const point = e.touches ? e.touches[0] : e;
+                updateThumb(point.clientX, point.clientY);
+            }
+
+            function endDrag(e) {
+                if (!dragging) return;
+                dragging = false;
+                thumb.classList.remove('dragging');
+                lastSentDir = null;
+
+                if (sendTimer) {
+                    clearInterval(sendTimer);
+                    sendTimer = null;
+                }
+
+                // 回弹到中心
+                thumb.style.left = '50%';
+                thumb.style.top = '50%';
+                thumb.style.transform = 'translate(-50%, -50%)';
+                xSpan.textContent = '0';
+                ySpan.textContent = '0';
+                dirLabel.textContent = '居中';
+
+                // 发送居中/释放指令
+                if (isConnected) {
+                    jsPendingTime = performance.now();
+                    sendCommand({
+                        type: 'run',
+                        code: 'print("JOY:center:0:0")'
+                    });
+                }
+            }
+
+            // 同时拦截摇杆的延迟（复用 D-pad 的延迟面板）
+            const _prevProcessResponse = processResponse;
+            processResponse = function(response) {
+                if (jsPendingTime && response.status === 'OUTPUT' &&
+                    response.message && response.message.startsWith('JOY:')) {
+                    const rtt = performance.now() - jsPendingTime;
+                    jsPendingTime = null;
+                    updateLatencyDisplay(rtt);
+                }
+                if (jsPendingTime && response.status === 'SUCCESS') {
+                    const rtt = performance.now() - jsPendingTime;
+                    jsPendingTime = null;
+                    updateLatencyDisplay(rtt);
+                }
+                _prevProcessResponse(response);
+            };
+
+            // 绑定事件 - 鼠标
+            area.addEventListener('mousedown', startDrag);
+            document.addEventListener('mousemove', moveDrag);
+            document.addEventListener('mouseup', endDrag);
+
+            // 绑定事件 - 触摸
+            area.addEventListener('touchstart', startDrag, { passive: false });
+            document.addEventListener('touchmove', moveDrag, { passive: false });
+            document.addEventListener('touchend', endDrag);
+        })();
+
         // 初始化日志
         logMessage('ESP32无线编程器已就绪', 'info');
         logMessage('支持蓝牙(BLE)和USB串口两种连接方式', 'info');
