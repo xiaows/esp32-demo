@@ -1587,7 +1587,7 @@ while True:
 
             // 发送方向指令，ESP32 侧执行对应代码并返回响应
             sendCommand({
-                type: 'run',
+                type: `${dir}`,
                 code: `print("DPAD:${dir}:${Date.now()}")`
             });
 
@@ -1749,7 +1749,7 @@ while True:
 
                 jsPendingTime = performance.now();
                 sendCommand({
-                    type: 'run',
+                    type: 'joystick',
                     code: `print("JOY:${dir}:${nx}:${ny}")`
                 });
                 logMessage(`摇杆: ${dirNames[dir] || dir} (${nx}, ${ny})`, 'info');
