@@ -597,13 +597,13 @@ print("已停止")</textarea>
                     <button onclick="clearEditor()" class="btn-danger">清空编辑器</button>
                 </div>
                 
-                 <!--<div class="examples">-->
-                     <!--<h3>🎯 示例代码</h3>-->
-                     <!--<button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>-->
-                    <!--<button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>-->
-                    <!-- <button class="example-btn" onclick="loadExample('wifi')">WiFi连接</button> -->
-                    <!-- <button class="example-btn" onclick="loadExample('http')">HTTP服务器</button> -->
-                 <!--</div>-->
+                 <div class="examples">
+                     <h3>示例代码</h3>
+                     <button class="example-btn" onclick="loadExample('blink')">LED闪烁</button>
+                    <button class="example-btn" onclick="loadExample('sensor')">读取传感器</button>
+                    <button class="example-btn" onclick="loadExample('servo')">舵机控制</button>
+
+                 </div>
                 
                 <div class="control-group">
                     <h3>🎮 方向控制 (延迟测试)</h3>
@@ -1428,7 +1428,32 @@ print('HTTP服务器已启动，访问 http://<esp32-ip>/')
 while True:
     client, addr = s.accept()
     print('客户端连接:', addr)
-    handle_request(client)`
+    handle_request(client)`,
+                servo: `# 舵机控制示例
+# 请先通过"上传文件"将 Servo.py 上传到 ESP32
+from Servo import motors
+import time
+
+# motors.run_specified_units(port, direction, amount, form)
+# port: 1=A, 2=B, 3=C, 4=D
+# direction: 0=正向, 1=反向
+# form: 1=圈, 2=度, 3=秒
+
+# 示例1: 端口A，正向旋转2圈
+print("端口A: 正向旋转2圈")
+motors.run_specified_units(1, 0, 2, 1)
+time.sleep(2)
+
+# 示例2: 端口B，反向旋转90度
+print("端口B: 反向旋转90度")
+motors.run_specified_units(2, 1, 90, 2)
+time.sleep(2)
+
+# 示例3: 端口C，正向转动3秒
+print("端口C: 正向转动3秒")
+motors.run_specified_units(3, 0, 3, 3)
+
+print("舵机控制完成")`
             };
             
             if (examples[exampleName]) {
