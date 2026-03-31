@@ -131,11 +131,52 @@ class ESP32_USB:
                 self.start_code_run(command)
             elif cmd_type == 'stop':
                 self.stop_code()
+            elif cmd_type == 'remote_joystick':
+                self.remote_joystick(command)
+            elif cmd_type == 'remote_stop':
+                self.remote_stop()
+            elif cmd_type == 'remote_rgb':
+                self.remote_rgb(command)
+            elif cmd_type == 'remote_skill':
+                self.remote_skill(command)
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
             self.send_response("ERROR", f"命令处理失败: {str(e)}")
+
+
+    # ---- 遥控命令处理 ----
+
+    def remote_joystick(self, command):
+        """处理遥控摇杆命令"""
+        x = command.get('x', 0)
+        y = command.get('y', 0)
+        speed = command.get('speed', 0)
+        direction = command.get('dir', 'center')
+        print(f"遥控摇杆: dir={direction}, x={x}, y={y}, speed={speed}")
+        # TODO: 接入电机控制逻辑
+        self.send_response("SUCCESS", f"joystick: {direction}")
+
+    def remote_stop(self):
+        """处理遥控停止命令"""
+        print("遥控停止")
+        # TODO: 停止电机
+        self.send_response("SUCCESS", "remote stopped")
+
+    def remote_rgb(self, command):
+        """处理遥控RGB命令"""
+        hue = command.get('hue', 0)
+        print(f"遥控RGB: hue={hue}")
+        # TODO: 接入LED/灯光控制逻辑
+        self.send_response("SUCCESS", f"rgb: hue={hue}")
+
+    def remote_skill(self, command):
+        """处理遥控技能命令"""
+        skill = command.get('skill', '')
+        print(f"遥控技能: {skill}")
+        # TODO: 接入技能动作逻辑
+        self.send_response("SUCCESS", f"skill: {skill}")
 
     def start_file_upload(self, command):
         """开始文件上传"""
