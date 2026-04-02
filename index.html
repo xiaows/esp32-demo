@@ -1033,17 +1033,17 @@ print("已停止")</textarea>
             const buffer = encoder.encode(data);
 
             // 分块发送（避免MTU限制）
-            const chunkSize = 512; // BLE MTU通常为512字节
+            const chunkSize = 240; // 实际MTU通常约253字节，留余量
             for (let i = 0; i < buffer.length; i += chunkSize) {
                 const chunk = buffer.slice(i, i + chunkSize);
-                await codeCharacteristic.writeValue(chunk);
+                await codeCharacteristic.writeValueWithoutResponse(chunk);
 
                 // 更新进度
                 const progress = Math.min((i + chunk.length) / buffer.length * 100, 100);
                 updateProgress(progress);
 
-                // 稍微延迟，避免阻塞
-                await new Promise(resolve => setTimeout(resolve, 10));
+                // 稍微延迟，给ESP32处理时间
+                await new Promise(resolve => setTimeout(resolve, 20));
             }
         }
         

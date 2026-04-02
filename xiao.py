@@ -30,7 +30,7 @@ class ESP32_BLE:
         self.ble = ubluetooth.BLE()
         self.ble.active(True)
         sleep_ms(100)
-        self.ble.config(gap_name=name)
+        self.ble.config(gap_name=name, mtu=MTU_SIZE)
         self.disconnected()
         self.ble.irq(self.ble_irq)
         self.register()
@@ -83,10 +83,12 @@ class ESP32_BLE:
 
             if attr_handle == self.rx:
                 buffer = self.ble.gatts_read(self.rx)
+                print(f"[IRQ] RX写入, 长度: {len(buffer)}")
                 self.process_command(buffer)
 
             elif attr_handle == self.code:
                 buffer = self.ble.gatts_read(self.code)
+                print(f"[IRQ] CODE写入, 块大小: {len(buffer)}")
                 self.process_code_data(buffer)
 
     def register(self):
@@ -122,7 +124,7 @@ class ESP32_BLE:
     def send_response(self, status, message="", data=None):
         """发送JSON响应到客户端"""
         if not self.is_connected:
-            print("警告：未连接，无法发送响应")
+            print(f"[BLE-RESP] 警告: 未连接，丢弃响应 status={status}")
             return
 
         response = {
@@ -133,10 +135,16 @@ class ESP32_BLE:
 
         try:
             response_str = json.dumps(response)
-            print(f"发送响应: {response_str[:100]}...")
-            self.ble.gatts_notify(self.conn_handle, self.tx, response_str.encode('utf-8'))
+            resp_bytes = response_str.encode('utf-8')
+            print(f"[BLE-RESP] {status} ({len(resp_bytes)}字节): {response_str[:80]}")
+            # 分块 notify，避免超出 MTU 被截断
+            chunk_size = 80
+            for i in range(0, len(resp_bytes), chunk_size):
+                self.ble.gatts_notify(self.conn_handle, self.tx, resp_bytes[i:i+chunk_size])
+                if i + chunk_size < len(resp_bytes):
+                    sleep_ms(20)
         except Exception as e:
-            print(f"发送响应失败: {e}")
+            print(f"[BLE-RESP] 发送失败: {e}")
 
     def advertiser(self):
         """启动BLE广播"""
@@ -265,35 +273,43 @@ class ESP32_BLE:
     def process_code_data(self, data):
         """处理代码数据块"""
         if not self.receiving_file and not self.receiving_code:
+            print("[DATA] 错误: 收到数据但未处于接收状态")
             self.send_response("ERROR", "未处于接收状态")
             return
 
         self.file_buffer.extend(data)
         progress = (len(self.file_buffer) / self.expected_size * 100) if self.expected_size > 0 else 0
+        print(f"[DATA] +{len(data)}字节, 已收: {len(self.file_buffer)}/{self.expected_size} ({progress:.1f}%)")
 
         if len(self.file_buffer) >= self.expected_size:
+            print(f"[DATA] 接收完成! 总计: {len(self.file_buffer)}字节")
             if self.receiving_file:
                 self.save_complete_file()
             elif self.receiving_code:
                 self.execute_received_code()
         else:
-            self.send_response("PROGRESS", "接收中...", {
-                "received": len(self.file_buffer),
-                "total": self.expected_size,
-                "progress": progress
-            })
+            # 每25%发送一次进度，避免notify拥塞导致传输卡住
+            if int(progress) % 25 == 0 or progress < 5:
+                self.send_response("PROGRESS", "接收中...", {
+                    "received": len(self.file_buffer),
+                    "total": self.expected_size,
+                    "progress": progress
+                })
 
     def save_complete_file(self):
         """保存完整的文件"""
+        print(f"[BLE-SAVE] 开始保存文件: {self.current_filename}, 大小: {len(self.file_buffer)}")
         try:
             with open(self.current_filename, 'wb') as f:
                 f.write(self.file_buffer)
 
+            print(f"[BLE-SAVE] 文件保存成功: {self.current_filename}")
             self.send_response("SUCCESS", f"文件保存成功: {self.current_filename}", {
                 "filename": self.current_filename,
                 "size": len(self.file_buffer)
             })
         except Exception as e:
+            print(f"[BLE-SAVE] 文件保存失败: {e}")
             self.send_response("ERROR", f"文件保存失败: {str(e)}")
         finally:
             self.receiving_file = False
@@ -302,13 +318,16 @@ class ESP32_BLE:
 
     def execute_received_code(self):
         """执行接收到的代码"""
+        print(f"[BLE-EXEC] 准备执行代码, buffer大小: {len(self.file_buffer)}")
         try:
             code = self.file_buffer.decode('utf-8')
-            print(f"执行接收到的代码，长度: {len(code)}")
+            print(f"[BLE-EXEC] 代码解码成功, 长度: {len(code)}")
+            print(f"[BLE-EXEC] 代码前100字符: {code[:100]}")
 
             self.send_response("INFO", "代码开始执行...")
             _thread.start_new_thread(self._run_code_thread, (code,))
         except Exception as e:
+            print(f"[BLE-EXEC] 代码执行失败: {e}")
             self.send_response("ERROR", f"代码执行失败: {str(e)}")
         finally:
             self.receiving_code = False
