@@ -437,12 +437,16 @@ class ESP32_BLE:
 
         try:
             self.execute_code(code)
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("SUCCESS", "代码执行完成", {
                     "memory_free": gc.mem_free()
                 })
         except Exception as e:
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("ERROR", f"执行出错: {str(e)}")
         finally:
             self.code_running = False
@@ -926,10 +930,14 @@ class ESP32_USB:
 
         try:
             self.execute_code(code)
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("SUCCESS", "代码执行完成", {"memory_free": gc.mem_free()})
         except Exception as e:
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("ERROR", f"执行出错: {str(e)}")
         finally:
             self.code_running = False
