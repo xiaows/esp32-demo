@@ -476,6 +476,10 @@ class ESP32_BLE:
             print(output)  # 本地也打印
             self.send_response("OUTPUT", output)
 
+        # 将 while True 替换为可中断循环
+        code = code.replace('while True:', 'while not should_stop():')
+        code = code.replace('while 1:', 'while not should_stop():')
+
         exec_globals = globals().copy()
         exec_globals.update({
             'print': custom_print,  # 使用自定义print
@@ -957,6 +961,10 @@ class ESP32_USB:
             output = ' '.join(str(arg) for arg in args)
             print(output)  # 本地也打印
             self.send_response("OUTPUT", output)
+
+        # 将 while True 替换为可中断循环
+        code = code.replace('while True:', 'while not should_stop():')
+        code = code.replace('while 1:', 'while not should_stop():')
 
         exec_globals = globals().copy()
         exec_globals.update({
