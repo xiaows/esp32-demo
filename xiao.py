@@ -17,9 +17,37 @@ import sys
 import select
 
 # 配置参数
-BLE_DEVICE_NAME = "ESP32-CodeLoader"
+BLE_NAME_PREFIX = "M200-"
+BLE_NAME_CONFIG_FILE = "_ble_name.txt"
 MTU_SIZE = 512
 USB_ENABLED = True
+
+def _generate_default_ble_name():
+    """生成默认名称：M200-随机6位数"""
+    import random
+    suffix = '{:06d}'.format(random.getrandbits(20) % 1000000)
+    return BLE_NAME_PREFIX + suffix
+
+def load_ble_name():
+    """从配置文件加载 BLE 名称，不存在则生成随机默认名并持久化"""
+    try:
+        with open(BLE_NAME_CONFIG_FILE, 'r') as f:
+            name = f.read().strip()
+            if name:
+                return name
+    except:
+        pass
+    # 首次启动：生成随机名称并保存，确保同一设备名称固定
+    default_name = _generate_default_ble_name()
+    save_ble_name(default_name)
+    return default_name
+
+def save_ble_name(name):
+    """将 BLE 名称保存到配置文件"""
+    with open(BLE_NAME_CONFIG_FILE, 'w') as f:
+        f.write(name)
+
+BLE_DEVICE_NAME = load_ble_name()
 
 
 class ESP32_BLE:
@@ -188,12 +216,49 @@ class ESP32_BLE:
                 self.remote_rgb(command)
             elif cmd_type == 'remote_skill':
                 self.remote_skill(command)
+            elif cmd_type == 'set_name':
+                self.set_device_name(command)
+            elif cmd_type == 'get_name':
+                self.send_response("SUCCESS", self.name)
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
             self.send_response("ERROR", f"命令处理失败: {str(e)}")
 
+
+    # ---- 设备名称修改 ----
+
+    def set_device_name(self, command):
+        """修改 BLE 设备名称，保存到文件并重启 BLE 广播"""
+        new_name = command.get('name', '').strip()
+        if not new_name:
+            self.send_response("ERROR", "名称不能为空")
+            return
+        # 强制 M200- 前缀
+        if not new_name.startswith(BLE_NAME_PREFIX):
+            new_name = BLE_NAME_PREFIX + new_name
+        # BLE 广播名称最长约 29 字节
+        name_bytes = new_name.encode('utf-8')
+        if len(name_bytes) > 29:
+            self.send_response("ERROR", "名称过长（UTF-8 不超过 29 字节）")
+            return
+        try:
+            save_ble_name(new_name)
+            self.name = new_name
+            self.ble.config(gap_name=new_name)
+            # 先回复成功，再断连让客户端重新扫描
+            self.send_response("SUCCESS", f"名称已修改为: {new_name}")
+            sleep_ms(300)
+            # 断开当前连接，重新广播新名称
+            if self.conn_handle is not None:
+                try:
+                    self.ble.gap_disconnect(self.conn_handle)
+                except:
+                    pass
+            self.need_advertise = True
+        except Exception as e:
+            self.send_response("ERROR", f"修改名称失败: {str(e)}")
 
     # ---- 遥控命令处理 ----
 
@@ -657,12 +722,36 @@ class ESP32_USB:
                 self.remote_rgb(command)
             elif cmd_type == 'remote_skill':
                 self.remote_skill(command)
+            elif cmd_type == 'set_name':
+                self.set_device_name(command)
+            elif cmd_type == 'get_name':
+                self.send_response("SUCCESS", load_ble_name())
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
             self.send_response("ERROR", f"命令处理失败: {str(e)}")
 
+
+    # ---- 设备名称修改（USB 侧） ----
+
+    def set_device_name(self, command):
+        """通过 USB 修改 BLE 设备名称（保存到文件，下次启动生效）"""
+        new_name = command.get('name', '').strip()
+        if not new_name:
+            self.send_response("ERROR", "名称不能为空")
+            return
+        if not new_name.startswith(BLE_NAME_PREFIX):
+            new_name = BLE_NAME_PREFIX + new_name
+        name_bytes = new_name.encode('utf-8')
+        if len(name_bytes) > 29:
+            self.send_response("ERROR", "名称过长（UTF-8 不超过 29 字节）")
+            return
+        try:
+            save_ble_name(new_name)
+            self.send_response("SUCCESS", f"名称已保存为: {new_name}（重启后生效）")
+        except Exception as e:
+            self.send_response("ERROR", f"修改名称失败: {str(e)}")
 
     # ---- 遥控命令处理 ----
 
