@@ -74,8 +74,11 @@ class ESP32_BLE:
         self.conn_handle = None
         self.is_connected = False
         self.need_advertise = False
+        self.need_cleanup = False
         self.code_running = False
         self.stop_flag = False
+        # 线程安全响应队列：子线程将响应放入此列表，主循环统一发送
+        self._resp_queue = []
 
         print("ESP32代码执行器已启动")
         print("可用命令: run, save, list, delete, reboot, info, stop")
@@ -104,6 +107,7 @@ class ESP32_BLE:
             self.conn_handle = None
             self.is_connected = False
             self.need_advertise = True
+            self.need_cleanup = True
             self.disconnected()
 
         elif event == 3:  # _IRQ_GATTS_WRITE
@@ -150,9 +154,11 @@ class ESP32_BLE:
             raise
 
     def send_response(self, status, message="", data=None):
-        """发送JSON响应到客户端"""
+        """发送JSON响应到客户端（线程安全）
+        子线程（code_running 期间）将响应入队，由主循环统一发送；
+        主线程/IRQ 直接发送。"""
         if not self.is_connected:
-            print(f"[BLE-RESP] 警告: 未连接，丢弃响应 status={status}")
+            print(f"[BLE-SKIP] {status}: {message}")
             return
 
         response = {
@@ -161,10 +167,19 @@ class ESP32_BLE:
             "data": data
         }
 
+        # 子线程中不直接操作 BLE，放入队列
+        if self.code_running:
+            self._resp_queue.append(response)
+            return
+
+        self._do_send(response)
+
+    def _do_send(self, response):
+        """实际 BLE notify 发送（只在主线程调用）"""
         try:
             response_str = json.dumps(response)
             resp_bytes = response_str.encode('utf-8')
-            print(f"[BLE-RESP] {status} ({len(resp_bytes)}字节): {response_str[:80]}")
+            print(f"[BLE-RESP] {response['status']} ({len(resp_bytes)}字节): {response_str[:80]}")
             # 分块 notify，避免超出 MTU 被截断
             chunk_size = 80
             for i in range(0, len(resp_bytes), chunk_size):
@@ -173,6 +188,13 @@ class ESP32_BLE:
                     sleep_ms(20)
         except Exception as e:
             print(f"[BLE-RESP] 发送失败: {e}")
+
+    def flush_responses(self):
+        """主循环调用：发送队列中积累的响应"""
+        while self._resp_queue and self.is_connected:
+            resp = self._resp_queue.pop(0)
+            self._do_send(resp)
+            sleep_ms(10)
 
     def advertiser(self):
         """启动BLE广播"""
@@ -216,6 +238,12 @@ class ESP32_BLE:
                 self.remote_rgb(command)
             elif cmd_type == 'remote_skill':
                 self.remote_skill(command)
+            elif cmd_type == 'burn':
+                import _autorun
+                _autorun.handle_burn(command, self.send_response, self.code_running, self._run_code_thread)
+            elif cmd_type == 'clear_autorun':
+                import _autorun
+                _autorun.handle_clear(self.send_response)
             elif cmd_type == 'set_name':
                 self.set_device_name(command)
             elif cmd_type == 'get_name':
@@ -730,6 +758,12 @@ class ESP32_USB:
                 self.remote_rgb(command)
             elif cmd_type == 'remote_skill':
                 self.remote_skill(command)
+            elif cmd_type == 'burn':
+                import _autorun
+                _autorun.handle_burn(command, self.send_response, self.code_running, self._run_code_thread)
+            elif cmd_type == 'clear_autorun':
+                import _autorun
+                _autorun.handle_clear(self.send_response)
             elif cmd_type == 'set_name':
                 self.set_device_name(command)
             elif cmd_type == 'get_name':
@@ -1114,16 +1148,43 @@ def main():
     print("ESP32代码执行器已启动")
     print("支持通信方式: BLE, USB")
 
+    # 检查自启动
+    import _autorun
+    _autorun.check_and_run(ble._run_code_thread)
+
     # 主循环
     while True:
+        # 发送子线程积累的 BLE 响应（线程安全）
+        ble.flush_responses()
+
+        # 断连后清理（从 IRQ 移到主循环，避免在中断上下文做重活）
+        if ble.need_cleanup:
+            ble.need_cleanup = False
+            ble.receiving_file = False
+            ble.receiving_code = False
+            ble.file_buffer = bytearray()
+            ble._resp_queue.clear()
+            gc.collect()
+            print(f"[BLE] 断连清理完成, 可用内存: {gc.mem_free()}")
+
         # 检查是否需要重新广播（BLE）
         if ble.need_advertise:
             ble.need_advertise = False
-            sleep_ms(100)
+            # 先停止旧广播，等双方 BLE 栈完全释放旧连接
             try:
-                ble.advertiser()
-            except OSError as e:
-                print(f"重新广播失败: {e}")
+                ble.ble.gap_advertise(None)
+            except:
+                pass
+            sleep_ms(2000)
+            gc.collect()
+            for _adv_retry in range(3):
+                try:
+                    ble.advertiser()
+                    break
+                except OSError as e:
+                    print(f"重新广播失败(重试{_adv_retry+1}/3): {e}")
+                    gc.collect()
+                    sleep_ms(1000)
 
         # 检查USB输入
         if usb:
