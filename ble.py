@@ -23,6 +23,12 @@ def _generate_default_ble_name():
     return BLE_NAME_PREFIX + suffix
 
 
+def save_ble_name(name):
+    """将 BLE 名称保存到配置文件"""
+    with open(BLE_NAME_CONFIG_FILE, 'w') as f:
+        f.write(name)
+
+
 def load_ble_name():
     """从配置文件加载 BLE 名称，不存在则生成随机默认名并持久化"""
     try:
@@ -35,12 +41,6 @@ def load_ble_name():
     default_name = _generate_default_ble_name()
     save_ble_name(default_name)
     return default_name
-
-
-def save_ble_name(name):
-    """将 BLE 名称保存到配置文件"""
-    with open(BLE_NAME_CONFIG_FILE, 'w') as f:
-        f.write(name)
 
 
 class ESP32_BLE:
