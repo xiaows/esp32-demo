@@ -1,11 +1,12 @@
 """
 ESP32 USB串口通信模块
-通过原生USB串口接收命令和发送响应
 
 注意：需要配合boot.py禁用REPL才能正常工作
 """
 
 from machine import Pin, Timer
+from time import sleep_ms
+import time
 import json
 import os
 import gc
@@ -13,8 +14,7 @@ import _thread
 import sys
 import select
 
-
-import time
+from ble import BLE_NAME_PREFIX, load_ble_name, save_ble_name
 
 
 class ESP32_USB:
@@ -139,12 +139,41 @@ class ESP32_USB:
                 self.remote_rgb(command)
             elif cmd_type == 'remote_skill':
                 self.remote_skill(command)
+            elif cmd_type == 'burn':
+                import _autorun
+                _autorun.handle_burn(command, self.send_response, self.code_running, self._run_code_thread)
+            elif cmd_type == 'clear_autorun':
+                import _autorun
+                _autorun.handle_clear(self.send_response)
+            elif cmd_type == 'set_name':
+                self.set_device_name(command)
+            elif cmd_type == 'get_name':
+                self.send_response("SUCCESS", load_ble_name())
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
             self.send_response("ERROR", f"命令处理失败: {str(e)}")
 
+    # ---- 设备名称修改（USB 侧） ----
+
+    def set_device_name(self, command):
+        """通过 USB 修改 BLE 设备名称（保存到文件，下次启动生效）"""
+        new_name = command.get('name', '').strip()
+        if not new_name:
+            self.send_response("ERROR", "名称不能为空")
+            return
+        if not new_name.startswith(BLE_NAME_PREFIX):
+            new_name = BLE_NAME_PREFIX + new_name
+        name_bytes = new_name.encode('utf-8')
+        if len(name_bytes) > 29:
+            self.send_response("ERROR", "名称过长（UTF-8 不超过 29 字节）")
+            return
+        try:
+            save_ble_name(new_name)
+            self.send_response("SUCCESS", f"名称已保存为: {new_name}（重启后生效）")
+        except Exception as e:
+            self.send_response("ERROR", f"修改名称失败: {str(e)}")
 
     # ---- 遥控命令处理 ----
 
@@ -315,10 +344,14 @@ class ESP32_USB:
 
         try:
             self.execute_code(code)
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("SUCCESS", "代码执行完成", {"memory_free": gc.mem_free()})
         except Exception as e:
-            if not self.stop_flag:
+            if self.stop_flag:
+                self.send_response("SUCCESS", "代码已停止")
+            else:
                 self.send_response("ERROR", f"执行出错: {str(e)}")
         finally:
             self.code_running = False
@@ -338,27 +371,36 @@ class ESP32_USB:
             self.send_response("INFO", "没有正在运行的代码")
 
     def execute_code(self, code):
+        """执行代码字符串"""
         import machine
         import time
 
         def should_stop():
             return self.stop_flag
 
-        def custom_print(*args):
-            self.send_response("OUTPUT", " ".join(str(a) for a in args))
+        # 自定义print函数，将输出发送回客户端
+        def custom_print(*args, **kwargs):
+            output = ' '.join(str(arg) for arg in args)
+            print(output)  # 本地也打印
+            self.send_response("OUTPUT", output)
 
-        exec_globals = {
-            'print': custom_print,
+        # 将 while True 替换为可中断循环
+        code = code.replace('while True:', 'while not should_stop():')
+        code = code.replace('while 1:', 'while not should_stop():')
+
+        exec_globals = globals().copy()
+        exec_globals.update({
+            'print': custom_print,  # 使用自定义print
             'Pin': Pin,
             'Timer': Timer,
-            'time': time,
             'machine': machine,
+            'time': time,
+            'os': os,
             'gc': gc,
-            'should_stop': should_stop,
-        }
+            'should_stop': should_stop
+        })
 
         exec(code, exec_globals)
-
 
     def save_code(self, command):
         """保存代码到文件"""
