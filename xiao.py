@@ -169,15 +169,6 @@ class ESP32_BLE:
 
         # 子线程中不直接操作 BLE，放入队列
         if self.code_running:
-            # 限制队列长度，防止内存耗尽
-            if len(self._resp_queue) >= 10:
-                # 丢弃最旧的 OUTPUT 消息
-                for i, r in enumerate(self._resp_queue):
-                    if r['status'] == 'OUTPUT':
-                        self._resp_queue.pop(i)
-                        break
-                else:
-                    self._resp_queue.pop(0)
             self._resp_queue.append(response)
             return
 
@@ -197,16 +188,12 @@ class ESP32_BLE:
                     sleep_ms(20)
         except Exception as e:
             print(f"[BLE-RESP] 发送失败: {e}")
-            if 'ENOMEM' in str(e):
-                gc.collect()
 
     def flush_responses(self):
         """主循环调用：发送队列中积累的响应"""
-        count = 0
-        while self._resp_queue and self.is_connected and count < 5:
+        while self._resp_queue and self.is_connected:
             resp = self._resp_queue.pop(0)
             self._do_send(resp)
-            count += 1
             sleep_ms(10)
 
     def advertiser(self):
