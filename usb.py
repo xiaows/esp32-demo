@@ -153,7 +153,7 @@ class ESP32_USB:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
-            self.send_response("ERROR", f"命令处理失败: {str(e)}")
+            self.send_response("ERROR", f"命令处理失败: {type(e).__name__}: {e}")
 
     # ---- 设备名称修改（USB 侧） ----
 
