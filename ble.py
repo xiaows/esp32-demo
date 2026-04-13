@@ -45,7 +45,7 @@ def load_ble_name():
 
 class ESP32_BLE:
     def __init__(self, name):
-        self.led = Pin(4, Pin.OUT)
+        self.led = Pin(19, Pin.OUT)
         self.timer1 = Timer(0)
         self.name = name
         self.ble = ubluetooth.BLE()
@@ -66,55 +66,77 @@ class ESP32_BLE:
         self.expected_size = 0
         self.conn_handle = None
         self.is_connected = False
-        self.need_advertise = False
+        self.need_advertise = False  # 完整重置协议栈（仅改名等特殊情况）
+        self.need_readvertise = False  # 普通重新广播（断连后）
         self.need_cleanup = False
+        self.need_connected_notify = False
+        self.need_disconnected_led = False
         self.code_running = False
         self.stop_flag = False
         # 线程安全响应队列：子线程将响应放入此列表，主循环统一发送
         self._resp_queue = []
+        # IRQ 数据队列：IRQ 只缓存数据，主循环处理
+        self._cmd_queue = []
+        self._code_data_queue = []
 
         print("ESP32代码执行器已启动")
         print("可用命令: run, save, list, delete, reboot, info, stop")
 
     def connected(self):
-        """连接成功：LED常亮"""
+        """连接成功：LED常亮（只在主循环调用）"""
         print("蓝牙已连接")
         self.led.value(1)
         self.timer1.deinit()
         self.send_response("CONNECTED", "欢迎使用ESP32代码执行器")
 
     def disconnected(self):
-        """断开连接：LED闪烁"""
+        """断开连接：LED闪烁（只在主循环调用）"""
         print("蓝牙已断开")
         self.timer1.init(period=100, mode=Timer.PERIODIC, callback=lambda t: self.led.value(not self.led.value()))
 
     def ble_irq(self, event, data):
-        """蓝牙中断回调"""
+        """蓝牙中断回调 - 仅做轻量标记和数据缓存，不做重操作"""
         if event == 1:  # _IRQ_CENTRAL_CONNECT
             self.conn_handle = data[0]
             self.is_connected = True
-            print(f"conn_handle: {self.conn_handle}, is_connected: {self.is_connected}")
-            self.connected()
+            self.need_connected_notify = True
 
         elif event == 2:  # _IRQ_CENTRAL_DISCONNECT
             self.conn_handle = None
             self.is_connected = False
-            self.need_advertise = True
+            self.need_readvertise = True  # 普通重新广播，不重置协议栈
             self.need_cleanup = True
-            self.disconnected()
+            self.need_disconnected_led = True
 
         elif event == 3:  # _IRQ_GATTS_WRITE
             conn_handle, attr_handle = data
-
             if attr_handle == self.rx:
                 buffer = self.ble.gatts_read(self.rx)
-                print(f"[IRQ] RX写入, 长度: {len(buffer)}")
-                self.process_command(buffer)
-
+                self._cmd_queue.append(bytes(buffer))
             elif attr_handle == self.code:
                 buffer = self.ble.gatts_read(self.code)
-                print(f"[IRQ] CODE写入, 块大小: {len(buffer)}")
-                self.process_code_data(buffer)
+                self._code_data_queue.append(bytes(buffer))
+
+    def poll(self):
+        """主循环调用：处理 IRQ 缓存的事件和数据"""
+        # 处理连接事件
+        if self.need_disconnected_led:
+            self.need_disconnected_led = False
+            self.disconnected()
+
+        if self.need_connected_notify:
+            self.need_connected_notify = False
+            self.connected()
+
+        # 处理命令队列
+        while self._cmd_queue:
+            buffer = self._cmd_queue.pop(0)
+            self.process_command(buffer)
+
+        # 处理代码数据队列
+        while self._code_data_queue:
+            buffer = self._code_data_queue.pop(0)
+            self.process_code_data(buffer)
 
     def register(self):
         """注册BLE服务和特征值"""
@@ -162,15 +184,6 @@ class ESP32_BLE:
 
         # 子线程中不直接操作 BLE，放入队列
         if self.code_running:
-            # 限制队列长度，防止内存耗尽
-            if len(self._resp_queue) >= 10:
-                # 丢弃最旧的 OUTPUT 消息
-                for i, r in enumerate(self._resp_queue):
-                    if r['status'] == 'OUTPUT':
-                        self._resp_queue.pop(i)
-                        break
-                else:
-                    self._resp_queue.pop(0)
             self._resp_queue.append(response)
             return
 
@@ -190,17 +203,30 @@ class ESP32_BLE:
                     sleep_ms(20)
         except Exception as e:
             print(f"[BLE-RESP] 发送失败: {e}")
-            if 'ENOMEM' in str(e):
-                gc.collect()
 
     def flush_responses(self):
         """主循环调用：发送队列中积累的响应"""
-        count = 0
-        while self._resp_queue and self.is_connected and count < 5:
+        while self._resp_queue and self.is_connected:
             resp = self._resp_queue.pop(0)
             self._do_send(resp)
-            count += 1
             sleep_ms(10)
+
+    def restart_ble(self):
+        """完整重置 BLE 协议栈（解决假重启问题）"""
+        print("[BLE] 开始完整重置协议栈...")
+        try:
+            self.ble.gap_advertise(None)
+        except:
+            pass
+        self.ble.active(False)
+        sleep_ms(500)
+        self.ble.active(True)
+        sleep_ms(300)
+        self.ble.config(gap_name=self.name, mtu=MTU_SIZE)
+        self.ble.irq(self.ble_irq)
+        self.register()
+        sleep_ms(100)
+        print("[BLE] 协议栈重置完成")
 
     def advertiser(self):
         """启动BLE广播"""
@@ -258,7 +284,7 @@ class ESP32_BLE:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
         except Exception as e:
-            self.send_response("ERROR", f"命令处理失败: {type(e).__name__}: {e}")
+            self.send_response("ERROR", f"命令处理失败: {str(e)}")
 
     # ---- 设备名称修改 ----
 
@@ -279,11 +305,10 @@ class ESP32_BLE:
         try:
             save_ble_name(new_name)
             self.name = new_name
-            self.ble.config(gap_name=new_name)
             # 先回复成功，再断连让客户端重新扫描
             self.send_response("SUCCESS", f"名称已修改为: {new_name}")
             sleep_ms(300)
-            # 断开当前连接，重新广播新名称
+            # 断开当前连接，触发完整重置和重新广播
             if self.conn_handle is not None:
                 try:
                     self.ble.gap_disconnect(self.conn_handle)
@@ -493,6 +518,7 @@ class ESP32_BLE:
 
     def stop_code(self):
         """停止正在运行的代码"""
+
         if self.code_running:
             self.stop_flag = True
             self.send_response("INFO", "正在停止代码...")
