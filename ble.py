@@ -229,12 +229,19 @@ class ESP32_BLE:
         print("[BLE] 协议栈重置完成")
 
     def advertiser(self):
-        """启动BLE广播"""
+        """启动BLE广播（兼容 iOS：广播数据含 Service UUID，扫描响应含设备名）"""
         name = bytes(self.name, 'UTF-8')
-        adv_prefix = bytearray('\x02\x01\x02', 'utf-8')
-        adv_name_part = bytearray((len(name) + 1, 0x09)) + name
-        adv_data = adv_prefix + adv_name_part
-        self.ble.gap_advertise(100, adv_data)
+
+        # 广播数据：Flags + 128-bit Service UUID (NUS)
+        adv_data = bytearray(b'\x02\x01\x06')  # Flags: LE General Discoverable + BR/EDR Not Supported
+        # NUS Service UUID (128-bit, little-endian): 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+        nus_uuid = bytes(reversed(bytes.fromhex('6E400001B5A3F393E0A9E50E24DCCA9E')))
+        adv_data += bytearray((len(nus_uuid) + 1, 0x07)) + nus_uuid  # 0x07 = Complete 128-bit UUID
+
+        # 扫描响应数据：设备名称
+        resp_data = bytearray((len(name) + 1, 0x09)) + name  # 0x09 = Complete Local Name
+
+        self.ble.gap_advertise(100, adv_data=adv_data, resp_data=resp_data)
         print("BLE广播已启动，设备名:", self.name)
 
     def process_command(self, data):
@@ -280,6 +287,8 @@ class ESP32_BLE:
                 self.set_device_name(command)
             elif cmd_type == 'get_name':
                 self.send_response("SUCCESS", self.name)
+            elif cmd_type == 'get_battery':
+                self.get_battery()
             else:
                 self.send_response("ERROR", f"未知命令: {cmd_type}")
 
@@ -625,6 +634,17 @@ class ESP32_BLE:
         self.send_response("INFO", "正在重启...")
         machine.reset()
 
+    def get_battery(self):
+        """获取电池电量百分比"""
+        try:
+            from Sensors import device
+            percent = device.get_battery_percent()
+            self.send_response("SUCCESS", f"电池电量: {percent}%", {
+                "battery": percent
+            })
+        except Exception as e:
+            self.send_response("ERROR", f"获取电量失败: {str(e)}")
+
     def get_system_info(self):
         """获取系统信息"""
         info = {
@@ -660,3 +680,4 @@ class ESP32_BLE:
             return fs_stat[0] * fs_stat[2]
         except:
             return 0
+
